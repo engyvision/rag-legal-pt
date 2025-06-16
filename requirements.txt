@@ -1,0 +1,45 @@
+# Core dependencies
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Google Cloud
+google-cloud-aiplatform>=1.70.0
+google-cloud-storage>=2.13.0
+google-cloud-logging>=3.8.0
+
+# MongoDB
+pymongo==4.6.0
+motor==3.3.2
+
+# Web frameworks
+fastapi>=0.110.0
+uvicorn>=0.30.0
+streamlit>=1.35.0
+
+# Data processing
+numpy>=1.26.0
+pandas>=2.2.0
+langchain>=0.2.0
+tiktoken>=0.7.0
+
+# Web scraping
+beautifulsoup4==4.12.2
+requests==2.31.0
+lxml==4.9.3
+
+# Additional service dependencies
+httpx==0.25.1
+aiofiles==23.2.1
+python-multipart==0.0.6
+PyPDF2==3.0.1
+python-docx==1.1.0
+streamlit-chat==0.1.1
+streamlit-extras==0.3.5
+aiohttp==3.9.1
+scrapy==2.11.0
+
+# Development
+pytest==7.4.3
+black==23.11.0
+flake8==6.1.0

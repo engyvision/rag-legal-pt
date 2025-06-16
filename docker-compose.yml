@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  retrieval-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - MONGODB_URI=${MONGODB_URI}
+      - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+    command: python -m src.retrieval_service.main
+
+  frontend-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - RETRIEVAL_SERVICE_URL=http://retrieval-service:8000
+    volumes:
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+    depends_on:
+      - retrieval-service
+    command: streamlit run src/frontend_service/app.py --server.port 8501 --server.address 0.0.0.0
+
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - MONGODB_URI=${MONGODB_URI}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - SCRAPER_BASE_URL=${SCRAPER_BASE_URL}
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+    command: python -m src.scrapers.main
+    profiles:
+      - scraper
+
+  setup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - MONGODB_URI=${MONGODB_URI}
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - ./scripts:/app/scripts
+      - ./src:/app/src
+    command: python scripts/setup_mongodb.py
+    profiles:
+      - setup
+
+networks:
+  default:
+    name: legal-assistant-network

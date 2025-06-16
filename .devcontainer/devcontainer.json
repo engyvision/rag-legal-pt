@@ -1,0 +1,57 @@
+{
+  "name": "Portuguese Legal Assistant Dev Container",
+  "dockerFile": "../Dockerfile",
+  "context": "..",
+  
+  "forwardPorts": [8000, 8501],
+  
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.linting.flake8Enabled": true,
+        "python.formatting.provider": "black",
+        "python.formatting.blackPath": "/usr/local/bin/black",
+        "editor.formatOnSave": true,
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestArgs": [
+          "tests"
+        ]
+      },
+      
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker",
+        "ms-toolsai.jupyter",
+        "mongodb.mongodb-vscode",
+        "googlecloudtools.cloudcode",
+        "redhat.vscode-yaml",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+  
+  "postCreateCommand": "pip install -e . && pre-commit install",
+  
+  "remoteUser": "vscode",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  
+  // Bind local gcloud config to the container to ensure proper authentication and configuration propagation
+//  "mounts": [
+//    "source=${localEnv:HOME}/.config/gcloud,target=/home/vscode/.config/gcloud,type=bind,consistency=cached"
+//  ],
+  
+  "runArgs": [
+    "--env-file",
+    "${localWorkspaceFolder}/.env"
+  ]
+}
