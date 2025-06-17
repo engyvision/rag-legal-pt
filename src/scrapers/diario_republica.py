@@ -19,15 +19,13 @@ class DiarioRepublicaScraper:
     def __init__(self, base_url: str = "https://diariodarepublica.pt"):
         self.base_url = base_url
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Legal Assistant Bot) Educational Purpose'
-        })
+        self.session.headers.update(
+            {"User-Agent": "Mozilla/5.0 (Legal Assistant Bot) Educational Purpose"}
+        )
         self.delay = 1.5  # Seconds between requests
 
     def scrape_recent_documents(
-        self,
-        days_back: int = 7,
-        max_documents: int = 100
+        self, days_back: int = 7, max_documents: int = 100
     ) -> List[Dict[str, Any]]:
         """Scrape recent documents from the last N days."""
         documents = []
@@ -47,8 +45,7 @@ class DiarioRepublicaScraper:
                 daily_docs = self._scrape_date(date_str)
                 documents.extend(daily_docs)
 
-                logger.info(
-                    f"Found {len(daily_docs)} documents for {date_str}")
+                logger.info(f"Found {len(daily_docs)} documents for {date_str}")
 
             except Exception as e:
                 logger.error(f"Error scraping {date_str}: {e}")
@@ -72,11 +69,12 @@ class DiarioRepublicaScraper:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = BeautifulSoup(response.content, "html.parser")
 
             # Find document listings (adjust selectors based on actual site structure)
-            doc_elements = soup.find_all('div', class_='dre-document') or \
-                soup.find_all('article', class_='diploma')
+            doc_elements = soup.find_all("div", class_="dre-document") or soup.find_all(
+                "article", class_="diploma"
+            )
 
             for elem in doc_elements:
                 doc = self._parse_document_element(elem, date_str)
@@ -89,29 +87,27 @@ class DiarioRepublicaScraper:
         return documents
 
     def _parse_document_element(
-        self,
-        element: BeautifulSoup,
-        date_str: str
+        self, element: BeautifulSoup, date_str: str
     ) -> Optional[Dict[str, Any]]:
         """Parse a document element from the page."""
         try:
             # Extract basic information
-            title = element.find('h2') or element.find('h3')
+            title = element.find("h2") or element.find("h3")
             title_text = title.get_text(strip=True) if title else ""
 
             # Extract document number/ID
-            doc_number = element.find('span', class_='diploma-numero')
-            doc_number_text = doc_number.get_text(
-                strip=True) if doc_number else ""
+            doc_number = element.find("span", class_="diploma-numero")
+            doc_number_text = doc_number.get_text(strip=True) if doc_number else ""
 
             # Extract summary
-            summary = element.find('div', class_='diploma-sumario') or \
-                element.find('p', class_='summary')
+            summary = element.find("div", class_="diploma-sumario") or element.find(
+                "p", class_="summary"
+            )
             summary_text = summary.get_text(strip=True) if summary else ""
 
             # Extract link to full document
-            link = element.find('a', href=True)
-            doc_url = urljoin(self.base_url, link['href']) if link else ""
+            link = element.find("a", href=True)
+            doc_url = urljoin(self.base_url, link["href"]) if link else ""
 
             # Extract document type
             doc_type = self._extract_document_type(title_text, doc_number_text)
@@ -126,10 +122,7 @@ class DiarioRepublicaScraper:
                 "document_type": doc_type,
                 "publication_date": date_str,
                 "scraped_at": datetime.now().isoformat(),
-                "metadata": {
-                    "source_url": self.base_url,
-                    "date_str": date_str
-                }
+                "metadata": {"source_url": self.base_url, "date_str": date_str},
             }
 
             # Fetch full text if URL is available
@@ -152,31 +145,33 @@ class DiarioRepublicaScraper:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = BeautifulSoup(response.content, "html.parser")
 
             # Remove script and style elements
             for script in soup(["script", "style"]):
                 script.decompose()
 
             # Find main content area (adjust based on site structure)
-            content = soup.find('div', class_='diploma-texto') or \
-                soup.find('div', class_='document-content') or \
-                soup.find('main')
+            content = (
+                soup.find("div", class_="diploma-texto")
+                or soup.find("div", class_="document-content")
+                or soup.find("main")
+            )
 
             if content:
                 # Extract text and clean it
-                text = content.get_text(separator='\n', strip=True)
+                text = content.get_text(separator="\n", strip=True)
 
                 # Clean up text
                 # Remove excessive newlines
-                text = re.sub(r'\n{3,}', '\n\n', text)
+                text = re.sub(r"\n{3,}", "\n\n", text)
                 # Remove excessive spaces
-                text = re.sub(r' {2,}', ' ', text)
+                text = re.sub(r" {2,}", " ", text)
 
                 return text
 
             # Fallback to body text
-            return soup.get_text(separator='\n', strip=True)
+            return soup.get_text(separator="\n", strip=True)
 
         except Exception as e:
             logger.error(f"Error fetching document text from {url}: {e}")
@@ -186,15 +181,15 @@ class DiarioRepublicaScraper:
         """Extract document type from title and number."""
         # Common Portuguese legal document types
         type_patterns = {
-            'lei': r'Lei n\.?º?\s*\d+',
-            'decreto_lei': r'Decreto-Lei n\.?º?\s*\d+',
-            'decreto': r'Decreto n\.?º?\s*\d+',
-            'portaria': r'Portaria n\.?º?\s*\d+',
-            'despacho': r'Despacho n\.?º?\s*\d+',
-            'resolucao': r'Resolução.*n\.?º?\s*\d+',
-            'regulamento': r'Regulamento n\.?º?\s*\d+',
-            'aviso': r'Aviso n\.?º?\s*\d+',
-            'deliberacao': r'Deliberação n\.?º?\s*\d+'
+            "lei": r"Lei n\.?º?\s*\d+",
+            "decreto_lei": r"Decreto-Lei n\.?º?\s*\d+",
+            "decreto": r"Decreto n\.?º?\s*\d+",
+            "portaria": r"Portaria n\.?º?\s*\d+",
+            "despacho": r"Despacho n\.?º?\s*\d+",
+            "resolucao": r"Resolução.*n\.?º?\s*\d+",
+            "regulamento": r"Regulamento n\.?º?\s*\d+",
+            "aviso": r"Aviso n\.?º?\s*\d+",
+            "deliberacao": r"Deliberação n\.?º?\s*\d+",
         }
 
         combined_text = f"{title} {number}".lower()
@@ -203,12 +198,10 @@ class DiarioRepublicaScraper:
             if re.search(pattern, combined_text, re.IGNORECASE):
                 return doc_type
 
-        return 'other'
+        return "other"
 
     def scrape_by_search(
-        self,
-        search_term: str,
-        max_results: int = 50
+        self, search_term: str, max_results: int = 50
     ) -> List[Dict[str, Any]]:
         """Scrape documents by search term."""
         documents = []
@@ -220,7 +213,7 @@ class DiarioRepublicaScraper:
             response = self.session.get(search_url, timeout=30)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = BeautifulSoup(response.content, "html.parser")
 
             # Parse search results
             # This would need to be adjusted based on actual site structure
