@@ -7,19 +7,24 @@ from datetime import datetime
 
 class QueryRequest(BaseModel):
     """Request model for document queries."""
-    query: str = Field(..., description="Natural language query in Portuguese")
-    top_k: int = Field(
-        5, ge=1, le=20, description="Number of results to return")
+
+    query: str = Field(..., description="Natural language query")
+    language: str = Field("pt", description="User interface language (pt/en)")
+    top_k: int = Field(5, ge=1, le=20, description="Number of results to return")
     use_llm: bool = Field(
-        True, description="Whether to use LLM for response generation")
+        True, description="Whether to use LLM for response generation"
+    )
     search_type: str = Field(
-        "hybrid", description="Type of search: vector, text, or hybrid")
+        "hybrid", description="Type of search: vector, text, or hybrid"
+    )
     filters: Optional[Dict[str, Any]] = Field(
-        None, description="MongoDB filters to apply")
+        None, description="MongoDB filters to apply"
+    )
 
 
 class DocumentSource(BaseModel):
     """Model for document sources in responses."""
+
     document_id: str
     title: str
     text: str
@@ -33,7 +38,9 @@ class DocumentSource(BaseModel):
 
 class QueryResponse(BaseModel):
     """Response model for document queries."""
+
     query: str
+    user_language: str = Field("pt", description="User interface language")
     answer: Optional[str] = Field(None, description="LLM-generated answer")
     sources: List[DocumentSource]
     search_type: str
@@ -43,6 +50,7 @@ class QueryResponse(BaseModel):
 
 class DocumentUploadResponse(BaseModel):
     """Response model for document uploads."""
+
     document_id: str
     filename: str
     document_type: str
@@ -54,27 +62,29 @@ class DocumentUploadResponse(BaseModel):
 
 class DocumentProcessRequest(BaseModel):
     """Request model for document processing."""
+
     gcs_path: str = Field(..., description="Path to document in Cloud Storage")
-    metadata: Optional[Dict[str, Any]] = Field(
-        None, description="Document metadata")
-    chunk_size: Optional[int] = Field(
-        None, description="Override default chunk size")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Document metadata")
+    chunk_size: Optional[int] = Field(None, description="Override default chunk size")
     chunk_overlap: Optional[int] = Field(
-        None, description="Override default chunk overlap")
+        None, description="Override default chunk overlap"
+    )
 
 
 class ContractAnalysisRequest(BaseModel):
     """Request model for contract analysis."""
+
     document_id: Optional[str] = None
     contract_text: Optional[str] = None
     analysis_type: str = Field(
         "comprehensive",
-        description="Type of analysis: comprehensive, summary, or compliance"
+        description="Type of analysis: comprehensive, summary, or compliance",
     )
 
 
 class ContractAnalysisResponse(BaseModel):
     """Response model for contract analysis."""
+
     document_id: Optional[str]
     analysis_type: str
     analysis: str
@@ -87,6 +97,7 @@ class ContractAnalysisResponse(BaseModel):
 
 class SearchResult(BaseModel):
     """Model for search results."""
+
     document_id: str
     title: str
     text_snippet: str
@@ -98,6 +109,7 @@ class SearchResult(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Model for error responses."""
+
     error: str
     detail: Optional[str] = None
     status_code: int

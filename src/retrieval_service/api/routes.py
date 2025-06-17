@@ -11,7 +11,7 @@ from .models import (
     QueryRequest,
     QueryResponse,
     DocumentUploadResponse,
-    DocumentProcessRequest
+    DocumentProcessRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,9 +33,10 @@ async def query_documents(request: QueryRequest):
         # Perform retrieval
         response = await retrieval_service.query(
             query=request.query,
+            language=request.language,
             top_k=request.top_k,
             use_llm=request.use_llm,
-            filters=request.filters
+            filters=request.filters,
         )
 
         return QueryResponse(**response)
@@ -55,7 +56,7 @@ async def search_documents(request: QueryRequest):
             query=request.query,
             top_k=request.top_k,
             search_type=request.search_type,
-            filters=request.filters
+            filters=request.filters,
         )
 
         return results
@@ -67,24 +68,22 @@ async def search_documents(request: QueryRequest):
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
-    file: UploadFile = File(...),
-    document_type: Optional[str] = "legal_document"
+    file: UploadFile = File(...), document_type: Optional[str] = "legal_document"
 ):
     """
     Upload a document for processing.
     """
     try:
         # Validate file
-        if not file.filename.endswith(('.pdf', '.txt', '.docx')):
+        if not file.filename.endswith((".pdf", ".txt", ".docx")):
             raise HTTPException(
                 status_code=400,
-                detail="Unsupported file format. Use PDF, TXT, or DOCX."
+                detail="Unsupported file format. Use PDF, TXT, or DOCX.",
             )
 
         # Process upload
         result = await processing_service.process_upload(
-            file=file,
-            document_type=document_type
+            file=file, document_type=document_type
         )
 
         return DocumentUploadResponse(**result)
@@ -101,8 +100,7 @@ async def process_document(request: DocumentProcessRequest):
     """
     try:
         result = await processing_service.process_document(
-            gcs_path=request.gcs_path,
-            metadata=request.metadata
+            gcs_path=request.gcs_path, metadata=request.metadata
         )
 
         return {"status": "processed", "document_id": result}
@@ -114,8 +112,7 @@ async def process_document(request: DocumentProcessRequest):
 
 @router.post("/analyze-contract")
 async def analyze_contract(
-    file: UploadFile = File(...),
-    analysis_type: str = "comprehensive"
+    file: UploadFile = File(...), analysis_type: str = "comprehensive"
 ):
     """
     Analyze a contract document (Stage 2 feature).
@@ -123,14 +120,12 @@ async def analyze_contract(
     try:
         # Upload and process
         upload_result = await processing_service.process_upload(
-            file=file,
-            document_type="contract"
+            file=file, document_type="contract"
         )
 
         # Analyze contract
         analysis = await retrieval_service.analyze_contract(
-            document_id=upload_result["document_id"],
-            analysis_type=analysis_type
+            document_id=upload_result["document_id"], analysis_type=analysis_type
         )
 
         return analysis
@@ -173,9 +168,7 @@ async def get_statistics():
         from ..core.mongodb import mongodb_client
         from ..core.config import settings
 
-        docs_collection = mongodb_client.async_db[
-            settings.mongodb_collection_documents
-        ]
+        docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
         vectors_collection = mongodb_client.async_db[
             settings.mongodb_collection_vectors
         ]
@@ -187,12 +180,14 @@ async def get_statistics():
             "total_documents": doc_count,
             "total_vectors": vector_count,
             "embedding_model": settings.embedding_model,
-            "llm_model": settings.llm_model
+            "llm_model": settings.llm_model,
         }
 
     except Exception as e:
         logger.error(f"Statistics error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 # This code defines the API routes for the retrieval service, including endpoints for querying documents,
 # uploading documents, processing documents, analyzing contracts, and retrieving statistics.
 # It uses FastAPI to create the routes and handle requests, with appropriate error handling and logging.

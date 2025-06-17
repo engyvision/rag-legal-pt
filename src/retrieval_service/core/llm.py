@@ -25,7 +25,7 @@ class LLMClient:
         try:
             vertexai.init(
                 project=settings.google_cloud_project,
-                location=settings.vertex_ai_location
+                location=settings.vertex_ai_location,
             )
 
             # Initialize Gemini model
@@ -36,7 +36,7 @@ class LLMClient:
                 "temperature": settings.temperature,
                 "max_output_tokens": settings.max_output_tokens,
                 "top_p": 0.95,
-                "top_k": 40
+                "top_k": 40,
             }
 
             logger.info(f"Initialized LLM model: {settings.llm_model}")
@@ -49,17 +49,20 @@ class LLMClient:
         self,
         query: str,
         contexts: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        query_for_search: Optional[str] = None,
+        user_language: str = "pt",
     ) -> str:
         """Generate a response using the LLM."""
         try:
             # Build the prompt
-            prompt = self._build_prompt(query, contexts, system_prompt)
+            prompt = self._build_prompt(
+                query, contexts, system_prompt, query_for_search, user_language
+            )
 
             # Generate response
             response = self.model.generate_content(
-                prompt,
-                generation_config=self.generation_config
+                prompt, generation_config=self.generation_config
             )
 
             return response.text
@@ -72,7 +75,9 @@ class LLMClient:
         self,
         query: str,
         contexts: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None
+        query_for_search: Optional[str] = None,
+        user_language: str = "pt",
+        system_prompt: Optional[str] = None,
     ) -> str:
         """Async wrapper for response generation."""
         loop = asyncio.get_event_loop()
@@ -81,20 +86,38 @@ class LLMClient:
             self.generate_response,
             query,
             contexts,
-            system_prompt
+            system_prompt,
+            query_for_search,
+            user_language,
         )
 
     def _build_prompt(
         self,
         query: str,
         contexts: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        query_for_search: Optional[str] = None,
+        user_language: str = "pt",
     ) -> str:
         """Build the prompt for the LLM."""
 
-        # Default system prompt for Portuguese legal assistant
+        # Multilingual system prompt for Portuguese legal assistant
         if not system_prompt:
-            system_prompt = """Você é um assistente jurídico especializado em legislação portuguesa. 
+            if user_language == "en":
+                system_prompt = """You are a Portuguese legal assistant specialized in Portuguese legislation.
+Your function is to provide accurate and helpful answers about Portuguese laws based on the provided documents.
+
+Guidelines:
+1. Always respond in English, but maintain Portuguese legal terms in parentheses when necessary
+2. Cite specific legal documents (number and date) when making references
+3. Be precise and objective, but also clear and accessible
+4. If you are uncertain or if information is not available in the provided contexts, indicate this clearly
+5. Structure your response appropriately when relevant
+6. Avoid giving personal legal advice - provide only information about the legislation
+7. When mentioning Portuguese legal terms, include the original Portuguese term in parentheses
+8. The user asked their question in English, but document retrieval was performed using a Portuguese translation"""
+            else:
+                system_prompt = """Você é um assistente jurídico especializado em legislação portuguesa. 
 Sua função é fornecer respostas precisas e úteis sobre leis portuguesas com base nos documentos fornecidos.
 
 Diretrizes:
@@ -106,17 +129,33 @@ Diretrizes:
 6. Evite dar conselhos jurídicos pessoais - forneça apenas informações sobre a legislação"""
 
         # Build context section
-        context_text = "\n\n".join([
-            f"**Documento {i+1}:**\n"
-            f"Título: {ctx.get('title', 'Sem título')}\n"
-            f"Tipo: {ctx.get('document_type', 'Desconhecido')}\n"
-            f"Data: {ctx.get('publication_date', 'Sem data')}\n"
-            f"Texto: {ctx.get('text', '')[:1000]}..."
-            for i, ctx in enumerate(contexts)
-        ])
+        context_text = "\n\n".join(
+            [
+                f"**Documento {i+1}:**\n"
+                f"Título: {ctx.get('title', 'Sem título')}\n"
+                f"Tipo: {ctx.get('document_type', 'Desconhecido')}\n"
+                f"Data: {ctx.get('publication_date', 'Sem data')}\n"
+                f"Texto: {ctx.get('text', '')[:1000]}..."
+                for i, ctx in enumerate(contexts)
+            ]
+        )
 
-        # Build full prompt
-        prompt = f"""{system_prompt}
+        # Build full prompt with language context
+        if user_language == "en":
+            query_info = f"User's Original Question (English): {query}"
+            if query_for_search and query_for_search != query:
+                query_info += f"\nTranslated Query for Document Search (Portuguese): {query_for_search}"
+
+            prompt = f"""{system_prompt}
+
+Relevant Legal Contexts:
+{context_text}
+
+{query_info}
+
+Response (in English):"""
+        else:
+            prompt = f"""{system_prompt}
 
 Contextos Legais Relevantes:
 {context_text}
@@ -128,9 +167,7 @@ Resposta:"""
         return prompt
 
     def analyze_contract(
-        self,
-        contract_text: str,
-        analysis_type: str = "comprehensive"
+        self, contract_text: str, analysis_type: str = "comprehensive"
     ) -> Dict[str, Any]:
         """Analyze a contract document."""
 
@@ -142,19 +179,17 @@ Resposta:"""
 4. Possíveis problemas ou cláusulas questionáveis
 5. Sugestões de melhorias
 6. Conformidade com a lei portuguesa""",
-
             "summary": """Forneça um resumo conciso deste contrato incluindo:
 1. Tipo de contrato
 2. Partes envolvidas
 3. Objeto principal
 4. Principais obrigações
 5. Prazo/vigência""",
-
             "compliance": """Verifique a conformidade deste contrato com a legislação portuguesa:
 1. Identifique as leis aplicáveis
 2. Verifique cláusulas obrigatórias ausentes
 3. Identifique cláusulas potencialmente inválidas
-4. Sugira correções necessárias"""
+4. Sugira correções necessárias""",
         }
 
         prompt = f"""{prompts.get(analysis_type, prompts['comprehensive'])}
@@ -166,14 +201,13 @@ Análise:"""
 
         try:
             response = self.model.generate_content(
-                prompt,
-                generation_config=self.generation_config
+                prompt, generation_config=self.generation_config
             )
 
             return {
                 "analysis_type": analysis_type,
                 "analysis": response.text,
-                "status": "completed"
+                "status": "completed",
             }
 
         except Exception as e:
@@ -182,7 +216,7 @@ Análise:"""
                 "analysis_type": analysis_type,
                 "analysis": "Erro ao analisar o contrato",
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
             }
 
     def extract_entities(self, text: str) -> Dict[str, List[str]]:
@@ -203,8 +237,7 @@ Entidades:"""
 
         try:
             response = self.model.generate_content(
-                prompt,
-                generation_config=self.generation_config
+                prompt, generation_config=self.generation_config
             )
 
             # Parse response (simplified - in production use proper JSON parsing)
@@ -213,7 +246,7 @@ Entidades:"""
                 "dates": [],
                 "institutions": [],
                 "monetary_values": [],
-                "deadlines": []
+                "deadlines": [],
             }
 
             # Basic extraction logic would go here
