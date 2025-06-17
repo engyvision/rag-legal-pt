@@ -30,7 +30,7 @@ class MongoDBClient:
             self.async_db = self.async_client[settings.mongodb_database]
 
             # Test connection
-            self.client.admin.command('ping')
+            self.client.admin.command("ping")
             logger.info("Connected to MongoDB Atlas")
 
         except Exception as e:
@@ -48,7 +48,8 @@ class MongoDBClient:
             logger.info("Index name: vector_index")
             logger.info("Collection: vectors")
             logger.info("JSON configuration:")
-            logger.info(f"""
+            logger.info(
+                f"""
 {{
   "fields": [{{
     "type": "vector",
@@ -57,9 +58,9 @@ class MongoDBClient:
     "similarity": "cosine"
   }}]
 }}
-            """)
-            logger.info(
-                "Please create this index manually in MongoDB Atlas Search UI")
+            """
+            )
+            logger.info("Please create this index manually in MongoDB Atlas Search UI")
 
         except Exception as e:
             logger.warning(f"Index creation note: {e}")
@@ -80,7 +81,7 @@ class MongoDBClient:
         self,
         query_embedding: List[float],
         limit: int = 5,
-        filter: Optional[Dict] = None
+        filter: Optional[Dict] = None,
     ) -> List[Dict[str, Any]]:
         """Perform vector similarity search."""
         collection = self.async_db[settings.mongodb_collection_vectors]
@@ -91,7 +92,7 @@ class MongoDBClient:
             "path": "embedding",
             "queryVector": query_embedding,
             "numCandidates": limit * 10,
-            "limit": limit
+            "limit": limit,
         }
 
         # Add filter if provided
@@ -99,18 +100,16 @@ class MongoDBClient:
             search_query["filter"] = filter
 
         pipeline = [
-            {
-                "$vectorSearch": search_query
-            },
+            {"$vectorSearch": search_query},
             {
                 "$project": {
                     "_id": 1,
                     "document_id": 1,
                     "text": 1,
                     "metadata": 1,
-                    "score": {"$meta": "vectorSearchScore"}
+                    "score": {"$meta": "vectorSearchScore"},
                 }
-            }
+            },
         ]
 
         results = []
@@ -120,9 +119,11 @@ class MongoDBClient:
         except Exception as e:
             if "Atlas Search index" in str(e) or "vector_index" in str(e):
                 logger.error(
-                    f"Vector search index not found. Please create it in MongoDB Atlas. Error: {e}")
+                    f"Vector search index not found. Please create it in MongoDB Atlas. Error: {e}"
+                )
                 logger.error(
-                    "Follow the instructions in the setup output or see MongoDB Atlas Setup Guide")
+                    "Follow the instructions in the setup output or see MongoDB Atlas Setup Guide"
+                )
                 # Return empty results instead of crashing
                 return []
             else:
@@ -131,10 +132,7 @@ class MongoDBClient:
         return results
 
     async def hybrid_search(
-        self,
-        query_embedding: List[float],
-        text_query: str,
-        limit: int = 5
+        self, query_embedding: List[float], text_query: str, limit: int = 5
     ) -> List[Dict[str, Any]]:
         """Perform hybrid search combining vector and text search."""
         # Vector search results
@@ -144,10 +142,13 @@ class MongoDBClient:
         text_collection = self.async_db[settings.mongodb_collection_documents]
         text_results = []
 
-        async for doc in text_collection.find(
-            {"$text": {"$search": text_query}},
-            {"score": {"$meta": "textScore"}}
-        ).sort([("score", {"$meta": "textScore"})]).limit(limit):
+        async for doc in (
+            text_collection.find(
+                {"$text": {"$search": text_query}}, {"score": {"$meta": "textScore"}}
+            )
+            .sort([("score", {"$meta": "textScore"})])
+            .limit(limit)
+        ):
             text_results.append(doc)
 
         # Combine and deduplicate results
@@ -156,10 +157,7 @@ class MongoDBClient:
         # Add vector results with higher weight
         for doc in vector_results:
             doc_id = str(doc.get("document_id", doc["_id"]))
-            combined[doc_id] = {
-                **doc,
-                "combined_score": doc.get("score", 0) * 0.7
-            }
+            combined[doc_id] = {**doc, "combined_score": doc.get("score", 0) * 0.7}
 
         # Add text results
         for doc in text_results:
@@ -167,16 +165,11 @@ class MongoDBClient:
             if doc_id in combined:
                 combined[doc_id]["combined_score"] += doc.get("score", 0) * 0.3
             else:
-                combined[doc_id] = {
-                    **doc,
-                    "combined_score": doc.get("score", 0) * 0.3
-                }
+                combined[doc_id] = {**doc, "combined_score": doc.get("score", 0) * 0.3}
 
         # Sort by combined score
         results = sorted(
-            combined.values(),
-            key=lambda x: x["combined_score"],
-            reverse=True
+            combined.values(), key=lambda x: x["combined_score"], reverse=True
         )[:limit]
 
         return results

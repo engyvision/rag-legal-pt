@@ -15,7 +15,7 @@ from .api import routes
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ app = FastAPI(
     title="Portuguese Legal Assistant Retrieval Service",
     description="RAG service for Portuguese legal document retrieval",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -66,7 +66,7 @@ async def root():
     return {
         "service": "Portuguese Legal Assistant Retrieval Service",
         "status": "running",
-        "version": "1.0.0"
+        "version": "1.0.0",
     }
 
 
@@ -75,12 +75,12 @@ async def health_check():
     """Health check endpoint."""
     try:
         # Check MongoDB connection
-        mongodb_client.client.admin.command('ping')
+        mongodb_client.client.admin.command("ping")
         return {
             "status": "healthy",
             "mongodb": "connected",
             "embeddings": "ready",
-            "llm": "ready"
+            "llm": "ready",
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
@@ -89,12 +89,13 @@ async def health_check():
 
 if __name__ == "__main__":
     import os
+
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(
         "src.retrieval_service.main:app",
         host="0.0.0.0",
         port=port,
-        reload=settings.debug
+        reload=settings.debug,
     )
 # This allows running the app with `python -m src.retrieval_service.main`
 # or `uvicorn src.retrieval_service.main:app --reload`

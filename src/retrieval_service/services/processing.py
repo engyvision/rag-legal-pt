@@ -24,9 +24,7 @@ class ProcessingService:
         self.bucket = self.storage_client.bucket(settings.gcs_bucket_name)
 
     async def process_upload(
-        self,
-        file,
-        document_type: str = "legal_document"
+        self, file, document_type: str = "legal_document"
     ) -> Dict[str, Any]:
         """Process an uploaded file."""
         start_time = time.time()
@@ -37,11 +35,11 @@ class ProcessingService:
             filename = file.filename
 
             # Extract text based on file type
-            if filename.endswith('.pdf'):
+            if filename.endswith(".pdf"):
                 text = self._extract_pdf_text(io.BytesIO(content))
-            elif filename.endswith('.txt'):
-                text = content.decode('utf-8', errors='ignore')
-            elif filename.endswith('.docx'):
+            elif filename.endswith(".txt"):
+                text = content.decode("utf-8", errors="ignore")
+            elif filename.endswith(".docx"):
                 text = self._extract_docx_text(io.BytesIO(content))
             else:
                 raise ValueError(f"Unsupported file type: {filename}")
@@ -62,10 +60,10 @@ class ProcessingService:
                 "metadata": {
                     "uploaded_at": datetime.now().isoformat(),
                     "file_size": len(content),
-                    "content_type": file.content_type
+                    "content_type": file.content_type,
                 },
                 "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "updated_at": datetime.now(),
             }
 
             doc_id = await mongodb_client.insert_document(document)
@@ -82,7 +80,7 @@ class ProcessingService:
                 "status": "processed",
                 "gcs_path": f"gs://{settings.gcs_bucket_name}/{blob_name}",
                 "processing_time": processing_time,
-                "chunks_created": chunks_created
+                "chunks_created": chunks_created,
             }
 
         except Exception as e:
@@ -90,17 +88,15 @@ class ProcessingService:
             raise
 
     async def process_document(
-        self,
-        gcs_path: str,
-        metadata: Optional[Dict[str, Any]] = None
+        self, gcs_path: str, metadata: Optional[Dict[str, Any]] = None
     ) -> str:
         """Process a document from Cloud Storage."""
         try:
             # Parse GCS path
-            if not gcs_path.startswith('gs://'):
+            if not gcs_path.startswith("gs://"):
                 raise ValueError("Invalid GCS path format")
 
-            path_parts = gcs_path[5:].split('/', 1)
+            path_parts = gcs_path[5:].split("/", 1)
             bucket_name = path_parts[0]
             blob_name = path_parts[1] if len(path_parts) > 1 else ""
 
@@ -110,25 +106,25 @@ class ProcessingService:
             content = blob.download_as_bytes()
 
             # Extract text
-            if blob_name.endswith('.pdf'):
+            if blob_name.endswith(".pdf"):
                 text = self._extract_pdf_text(io.BytesIO(content))
-            elif blob_name.endswith('.txt'):
-                text = content.decode('utf-8', errors='ignore')
-            elif blob_name.endswith('.docx'):
+            elif blob_name.endswith(".txt"):
+                text = content.decode("utf-8", errors="ignore")
+            elif blob_name.endswith(".docx"):
                 text = self._extract_docx_text(io.BytesIO(content))
             else:
-                text = content.decode('utf-8', errors='ignore')
+                text = content.decode("utf-8", errors="ignore")
 
             # Create document
             document = {
-                "title": metadata.get("title", blob_name.split('/')[-1]),
+                "title": metadata.get("title", blob_name.split("/")[-1]),
                 "text": text,
                 "source": metadata.get("source", "gcs"),
                 "document_type": metadata.get("document_type", "legal_document"),
                 "gcs_path": gcs_path,
                 "metadata": metadata or {},
                 "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "updated_at": datetime.now(),
             }
 
             # Add metadata fields
@@ -152,15 +148,13 @@ class ProcessingService:
         document_id: str,
         text: str,
         chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None
+        chunk_overlap: Optional[int] = None,
     ) -> int:
         """Create embeddings for document chunks."""
         try:
             # Chunk the text
             chunks = embeddings_client.chunk_text(
-                text,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
+                text, chunk_size=chunk_size, chunk_overlap=chunk_overlap
             )
 
             if not chunks:
@@ -170,12 +164,12 @@ class ProcessingService:
             # Generate embeddings in batches
             chunk_texts = [chunk["text"] for chunk in chunks]
             embeddings = await embeddings_client.agenerate_embeddings_batch(
-                chunk_texts,
-                batch_size=5
+                chunk_texts, batch_size=5
             )
 
             # Store vectors
             from bson import ObjectId
+
             vectors_created = 0
 
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
@@ -187,16 +181,15 @@ class ProcessingService:
                     "metadata": {
                         "start_char": chunk["start_char"],
                         "end_char": chunk["end_char"],
-                        "chunk_size": len(chunk["text"])
+                        "chunk_size": len(chunk["text"]),
                     },
-                    "created_at": datetime.now()
+                    "created_at": datetime.now(),
                 }
 
                 await mongodb_client.insert_vector(vector_doc)
                 vectors_created += 1
 
-            logger.info(
-                f"Created {vectors_created} vectors for document {document_id}")
+            logger.info(f"Created {vectors_created} vectors for document {document_id}")
             return vectors_created
 
         except Exception as e:
@@ -246,17 +239,16 @@ class ProcessingService:
                 settings.mongodb_collection_vectors
             ]
             from bson import ObjectId
-            delete_result = await vectors_collection.delete_many({
-                "document_id": ObjectId(document_id)
-            })
 
-            logger.info(
-                f"Deleted {delete_result.deleted_count} existing vectors")
+            delete_result = await vectors_collection.delete_many(
+                {"document_id": ObjectId(document_id)}
+            )
+
+            logger.info(f"Deleted {delete_result.deleted_count} existing vectors")
 
             # Recreate embeddings
             chunks_created = await self._create_embeddings(
-                document_id,
-                document.get("text", "")
+                document_id, document.get("text", "")
             )
 
             # Update document timestamp
@@ -264,15 +256,14 @@ class ProcessingService:
                 settings.mongodb_collection_documents
             ]
             await docs_collection.update_one(
-                {"_id": ObjectId(document_id)},
-                {"$set": {"updated_at": datetime.now()}}
+                {"_id": ObjectId(document_id)}, {"$set": {"updated_at": datetime.now()}}
             )
 
             return {
                 "document_id": document_id,
                 "vectors_deleted": delete_result.deleted_count,
                 "vectors_created": chunks_created,
-                "status": "reprocessed"
+                "status": "reprocessed",
             }
 
         except Exception as e:

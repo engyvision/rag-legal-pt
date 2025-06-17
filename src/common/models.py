@@ -8,6 +8,7 @@ from enum import Enum
 
 class DocumentType(str, Enum):
     """Types of legal documents."""
+
     LEI = "lei"
     DECRETO_LEI = "decreto_lei"
     DECRETO = "decreto"
@@ -23,6 +24,7 @@ class DocumentType(str, Enum):
 
 class DocumentSource(str, Enum):
     """Sources of documents."""
+
     DIARIO_REPUBLICA = "diario_republica"
     UPLOAD = "upload"
     MANUAL = "manual"
@@ -32,6 +34,7 @@ class DocumentSource(str, Enum):
 @dataclass
 class Document:
     """Document model."""
+
     title: str
     text: str
     source: DocumentSource
@@ -55,6 +58,7 @@ class Document:
 @dataclass
 class DocumentChunk:
     """Document chunk model."""
+
     document_id: str
     text: str
     chunk_index: int
@@ -71,6 +75,7 @@ class DocumentChunk:
 @dataclass
 class QueryResult:
     """Query result model."""
+
     document_id: str
     title: str
     text: str
@@ -88,6 +93,7 @@ class QueryResult:
 @dataclass
 class ContractAnalysis:
     """Contract analysis result model."""
+
     document_id: str
     analysis_type: str
     summary: str
@@ -104,6 +110,7 @@ class ContractAnalysis:
 
 class AnalysisType(str, Enum):
     """Types of contract analysis."""
+
     COMPREHENSIVE = "comprehensive"
     SUMMARY = "summary"
     COMPLIANCE = "compliance"

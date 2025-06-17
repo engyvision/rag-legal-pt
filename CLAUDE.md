@@ -12,9 +12,9 @@ The project follows a microservices architecture with three main services:
 
 1. **Retrieval Service** (`src/retrieval_service/`): FastAPI backend that handles document retrieval, embeddings, and LLM integration
 2. **Frontend Service** (`src/frontend_service/`): Streamlit web interface for user interactions
-3. **Scrapers** (`src/scrapers/`): Web scrapers for legal documents from diariodarepublica.pt
+3. **Legal Document Scraper** (`scripts/scrape_legislation.py`): Scrapes Portuguese legal documents from diariodarepublica.pt using CSV metadata
 
-**Data Flow**: Legal documents → Scrapers → Cloud Storage → Processing → Embeddings → MongoDB Atlas → Vector Search → LLM Response
+**Data Flow**: CSV metadata → Web scraping (diariodarepublica.pt) → Document processing → Embeddings → MongoDB Atlas → Vector Search → LLM Response
 
 ## Technology Stack
 
@@ -22,6 +22,7 @@ The project follows a microservices architecture with three main services:
 - **Frontend**: Streamlit
 - **Database**: MongoDB Atlas (with vector search)
 - **AI/ML**: Google Vertex AI (gemini-embedding-001, gemini-1.5-pro-001)
+- **Web Scraping**: Playwright + Selenium (JavaScript rendering)
 - **Cloud**: Google Cloud Platform (Cloud Run, Cloud Storage)
 - **Containerization**: Docker with docker-compose
 
@@ -57,14 +58,20 @@ python scripts/test_vector_search.py
 
 ### Data Management
 ```bash
-# Initialize sample data
-python scripts/init_data.py
-
 # Setup MongoDB collections and indexes
 python scripts/setup_mongodb.py
 
-# Run scrapers
-docker-compose run --rm scraper
+# Initialize sample data (for testing)
+python scripts/init_data.py
+
+# Scrape real Portuguese legal documents from CSV data
+python scripts/scrape_legislation.py
+
+# Verify setup and connections
+python scripts/verify_setup.py
+
+# Test vector search functionality
+python scripts/test_vector_search.py
 ```
 
 ### Deployment
@@ -122,8 +129,33 @@ Required environment variables (see `.env.example`):
 3. Verify embeddings are generated correctly
 4. Check MongoDB logs for search errors
 
+### Portuguese Legal Document Scraper
+
+The main scraper (`scripts/scrape_legislation.py`) processes Portuguese legal documents from CSV files in `data/legislationPT/`:
+
+**Supported Document Types:**
+- Lei (Laws)
+- Decreto-Lei (Decree-Laws) 
+- Decreto (Decrees)
+- Portaria (Ordinances)
+
+**Features:**
+- Reads CSV metadata (title, issuing body, description, links)
+- Scrapes full legal text from diariodarepublica.pt using Playwright
+- Extracts document numbers and publication dates
+- Only stores documents with real legal content (no fallback/fake content)
+- Generates embeddings and stores in MongoDB with vector search
+
+**CSV Structure:**
+Each CSV file contains the last 4 columns with:
+- Document title with number and date
+- Issuing body/ministry
+- Document description
+- Link to full document on diariodarepublica.pt
+
 ### Adding New Document Types
-1. Update schemas in `scripts/setup_mongodb.py`
-2. Modify scrapers in `src/scrapers/`
-3. Update document processing in `retrieval_service/services/`
-4. Add tests for new document types
+1. Add new CSV file to `data/legislationPT/` with same column structure
+2. Update `DOCUMENT_TYPE_MAPPING` in `scripts/scrape_legislation.py`
+3. Add corresponding `DocumentType` enum in `src/common/models.py`
+4. Update column mappings in `CSV_COLUMN_MAPPING` if needed
+5. Test with new document type
