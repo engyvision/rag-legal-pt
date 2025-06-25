@@ -32,6 +32,14 @@ DOCUMENT_TYPE_MAPPING = {
     "Portaria.csv": DocumentType.PORTARIA,
 }
 
+# Category mapping based on document type
+CATEGORY_MAPPING = {
+    DocumentType.LEI: "legislação_geral",
+    DocumentType.DECRETO_LEI: "legislação_geral", 
+    DocumentType.DECRETO: "decretos_executivos",
+    DocumentType.PORTARIA: "regulamentação_setorial"
+}
+
 # CSV column mappings - last 4 columns are what we need
 CSV_COLUMN_MAPPING = {
     "Lei.csv": {
@@ -59,6 +67,46 @@ CSV_COLUMN_MAPPING = {
         "link": "Link"
     }
 }
+
+
+def extract_keywords(title: str, description: str, doc_type: DocumentType) -> List[str]:
+    """Extract basic keywords from document info."""
+    keywords = []
+    
+    # Add document type as keyword
+    type_keywords = {
+        DocumentType.LEI: ["lei", "legislação"],
+        DocumentType.DECRETO_LEI: ["decreto-lei", "decreto", "legislação"],
+        DocumentType.DECRETO: ["decreto", "executivo"],
+        DocumentType.PORTARIA: ["portaria", "regulamento"]
+    }
+    keywords.extend(type_keywords.get(doc_type, []))
+    
+    # Extract significant words from title/description
+    text = f"{title} {description}".lower()
+    
+    # Common legal keywords to look for
+    legal_terms = [
+        "sociedade", "empresa", "comercial", "trabalho", "fiscal", 
+        "tributário", "administrativo", "civil", "penal", "constitucional",
+        "social", "segurança", "saúde", "educação", "ambiente", "urbano",
+        "financeiro", "bancário", "seguros", "telecomunicações", "energia",
+        "transporte", "agricultura", "turismo", "cultura", "justiça"
+    ]
+    
+    for term in legal_terms:
+        if term in text:
+            keywords.append(term)
+    
+    # Extract words from document numbers for sector-specific keywords
+    if "sociedade" in text or "comercial" in text:
+        keywords.extend(["direito_comercial", "empresarial"])
+    if "trabalho" in text or "laboral" in text:
+        keywords.extend(["direito_trabalho", "laboral"])
+    if "fiscal" in text or "tributário" in text:
+        keywords.extend(["direito_fiscal", "tributário"])
+    
+    return list(set(keywords))  # Remove duplicates
 
 
 class LegislationScraper:
@@ -428,6 +476,9 @@ class LegislationScraper:
                         logger.error(f"   Reason: No real legal text could be extracted")
                         continue  # Skip this document entirely - no fake content!
                     
+                    # Extract keywords
+                    keywords = extract_keywords(doc_data["title"], doc_data["description"], doc_type)
+                    
                     # Create document record
                     document = {
                         "title": doc_data["title"],
@@ -435,14 +486,18 @@ class LegislationScraper:
                         "document_type": doc_type,
                         "document_number": document_number,
                         "publication_date": publication_date,
+                        "issuing_body": doc_data["issuing_body"],
+                        "description": doc_data["description"],
+                        "category": CATEGORY_MAPPING.get(doc_type, "outros"),
+                        "keywords": keywords,
                         "source": DocumentSource.SCRAPER,
                         "url": doc_data["link"],
                         "metadata": {
-                            "issuing_body": doc_data["issuing_body"],
-                            "description": doc_data["description"],
                             "csv_file": csv_file.name,
                             "scraped_at": datetime.now().isoformat(),
-                            "raw_csv_data": doc_data["raw_row"]
+                            "raw_csv_data": doc_data["raw_row"],
+                            "scraping_method": "selenium",
+                            "processing_version": "1.0"
                         },
                         "created_at": datetime.now(),
                         "updated_at": datetime.now()
@@ -511,7 +566,7 @@ class LegislationScraper:
                             "document_type": doc_data["document_type"],
                             "document_title": doc_data["title"],
                             "document_number": doc_data["document_number"],
-                            "issuing_body": doc_data["metadata"]["issuing_body"]
+                            "issuing_body": doc_data["issuing_body"]
                         },
                         "created_at": datetime.now()
                     }

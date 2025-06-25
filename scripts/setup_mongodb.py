@@ -48,6 +48,10 @@ def setup_mongodb():
                             "document_type": {"bsonType": "string"},
                             "document_number": {"bsonType": "string"},
                             "publication_date": {"bsonType": "string"},
+                            "issuing_body": {"bsonType": "string"},
+                            "description": {"bsonType": "string"},
+                            "category": {"bsonType": "string"},
+                            "keywords": {"bsonType": "array", "items": {"bsonType": "string"}},
                             "url": {"bsonType": "string"},
                             "metadata": {"bsonType": "object"},
                             "created_at": {"bsonType": "date"},
@@ -112,6 +116,10 @@ def setup_mongodb():
         documents_col.create_index([("title", TEXT), ("text", TEXT)])
         documents_col.create_index("document_type")
         documents_col.create_index("publication_date")
+        documents_col.create_index("issuing_body")
+        documents_col.create_index("description")
+        documents_col.create_index("category")
+        documents_col.create_index("keywords")
         documents_col.create_index("created_at")
 
         # Vectors collection indexes (regular indexes, Atlas Search index created separately)
@@ -170,7 +178,11 @@ def setup_mongodb():
                 "document_number": "TEST-001",
                 "publication_date": "2024-01-01",
                 "url": "https://example.com",
-                "metadata": {"category": "test"},
+                "issuing_body": "Assembleia da República",
+                "description": "Lei de teste para demonstração do sistema",
+                "category": "legislação_geral",
+                "keywords": ["lei", "legislação", "teste"],
+                "metadata": {"csv_file": "test.csv", "scraping_method": "manual", "processing_version": "1.0"},
                 "created_at": datetime.now(),
                 "updated_at": datetime.now()
             }

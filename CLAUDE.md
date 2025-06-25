@@ -107,6 +107,52 @@ Required environment variables (see `.env.example`):
 - **Vector Search**: MongoDB Atlas with cosine similarity
 - **Database**: legal_assistant (collections: documents, vectors, queries)
 
+## Document Schema
+
+Documents are stored in MongoDB with the following structure:
+
+```python
+{
+    # Core document fields (from the legal document itself)
+    "title": "Lei n.º 23/2023 - Regime Jurídico das Sociedades Comerciais",
+    "text": "Full document text content...",
+    "document_type": "lei",
+    "document_number": "23/2023",
+    "publication_date": "2023-05-15",
+    "issuing_body": "Assembleia da República",     # Root-level field
+    "description": "Estabelece o regime...",       # Root-level field
+    "category": "legislação_geral",                # Auto-categorized
+    "keywords": ["lei", "legislação", "sociedade", "comercial", "empresa"],  # Auto-extracted
+    "source": "scraper",
+    "url": "https://dre.pt/exemplo/lei-23-2023",
+    
+    # Process/system metadata only
+    "metadata": {
+        "csv_file": "Lei.csv",
+        "scraped_at": "2024-01-15T10:30:00",
+        "raw_csv_data": {...},
+        "scraping_method": "selenium",
+        "processing_version": "1.0"
+    },
+    
+    "created_at": ISODate(),
+    "updated_at": ISODate()
+}
+```
+
+**Key Schema Notes:**
+- `issuing_body` and `description` are **root-level fields** (moved from metadata in v1.0)
+- `category` is auto-assigned based on document type (legislação_geral, decretos_executivos, regulamentação_setorial)
+- `keywords` are auto-extracted from title/description using legal domain terms
+- `metadata` contains only process-related information, not document content
+- All root-level fields have database indexes for efficient querying
+- Use the migration script `temp/migrate_document_schema.py` when upgrading from older schemas
+
+**Categories:**
+- `legislação_geral`: Laws and Decree-Laws
+- `decretos_executivos`: Presidential/Government Decrees  
+- `regulamentação_setorial`: Sector-specific regulations (Portarias)
+
 ## Important Setup Notes
 
 1. **MongoDB Atlas Vector Search**: Must manually create vector index via Atlas UI after running `setup_mongodb.py`
@@ -128,6 +174,40 @@ Required environment variables (see `.env.example`):
 2. Run `python scripts/test_vector_search.py`
 3. Verify embeddings are generated correctly
 4. Check MongoDB logs for search errors
+
+### Schema Migration
+When upgrading from older document schemas, run these scripts in order:
+
+#### 1. Move Fields from Metadata to Root Level
+```bash
+# Preview changes without applying them
+python temp/migrate_document_schema.py --dry-run
+
+# Run the migration
+python temp/migrate_document_schema.py
+
+# Verify migration completed successfully
+python temp/migrate_document_schema.py --verify-only
+```
+
+#### 2. Add Category and Keywords to Existing Documents
+```bash
+# Preview what fields would be added
+python temp/add_category_keywords.py --dry-run
+
+# Add category and keywords to existing documents
+python temp/add_category_keywords.py
+
+# Verify all documents have the new fields
+python temp/add_category_keywords.py --verify-only
+```
+
+**Migration Details:**
+- **migrate_document_schema.py**: Moves `issuing_body` and `description` from `metadata` to root level
+- **add_category_keywords.py**: Adds `category` (based on document type) and `keywords` (extracted from title/description)
+- Both scripts are idempotent (safe to run multiple times)
+- Comprehensive logging and verification
+- Use `--dry-run` to preview changes before applying
 
 ### Portuguese Legal Document Scraper
 

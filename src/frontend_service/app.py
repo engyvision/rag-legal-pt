@@ -297,9 +297,37 @@ def main():
                         f"{t('source_prefix')} {i+1}: {source.get('title', t('document'))}"
                     ):
                         st.write(f"{t('text_label')} {source.get('text', '')[:500]}...")
-                        if "metadata" in source:
+                        
+                        # Create curated display info instead of raw metadata
+                        display_info = {}
+                        if source.get("issuing_body"):
+                            display_info["Órgão Emissor" if st.session_state.language == "pt" else "Issuing Body"] = source.get("issuing_body")
+                        if source.get("description"):
+                            display_info["Descrição" if st.session_state.language == "pt" else "Description"] = source.get("description")
+                        if source.get("document_type"):
+                            display_info["Tipo de Documento" if st.session_state.language == "pt" else "Document Type"] = source.get("document_type")
+                        if source.get("document_number"):
+                            display_info["Número" if st.session_state.language == "pt" else "Number"] = source.get("document_number")
+                        if source.get("publication_date"):
+                            display_info["Data de Publicação" if st.session_state.language == "pt" else "Publication Date"] = source.get("publication_date")
+                        if source.get("url"):
+                            display_info["URL"] = source.get("url")
+                            
+                        # Add category/keywords if they exist in metadata or root level
+                        if source.get("category"):
+                            display_info["Categoria" if st.session_state.language == "pt" else "Category"] = source.get("category")
+                        elif source.get("metadata", {}).get("category"):
+                            display_info["Categoria" if st.session_state.language == "pt" else "Category"] = source["metadata"]["category"]
+                            
+                        if source.get("keywords"):
+                            display_info["Palavras-chave" if st.session_state.language == "pt" else "Keywords"] = source.get("keywords")
+                        elif source.get("metadata", {}).get("keywords"):
+                            display_info["Palavras-chave" if st.session_state.language == "pt" else "Keywords"] = source["metadata"]["keywords"]
+                        
+                        if display_info:
                             st.write(t("metadata_label"))
-                            st.json(source["metadata"])
+                            st.json(display_info)
+                            
                         if "score" in source:
                             st.progress(
                                 source["score"],

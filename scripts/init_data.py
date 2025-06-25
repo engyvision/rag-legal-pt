@@ -60,11 +60,15 @@ As sociedades comerciais gozam de personalidade jurídica e têm capacidade de d
         "document_type": DocumentType.LEI,
         "document_number": "23/2023",
         "publication_date": "2023-05-15",
+        "issuing_body": "Assembleia da República",
+        "description": "Estabelece o regime jurídico aplicável às sociedades comerciais",
+        "category": "legislação_geral",
+        "keywords": ["lei", "legislação", "sociedade", "comercial", "empresa", "direito_comercial", "empresarial"],
         "source": DocumentSource.MANUAL,
         "url": "https://dre.pt/exemplo/lei-23-2023",
         "metadata": {
-            "category": "direito_comercial",
-            "keywords": ["sociedades", "comercial", "empresa"]
+            "scraping_method": "manual",
+            "processing_version": "1.0"
         }
     },
     {
@@ -99,11 +103,15 @@ Período normal de trabalho
         "document_type": DocumentType.DECRETO_LEI,
         "document_number": "45/2023",
         "publication_date": "2023-06-20",
+        "issuing_body": "Presidência do Conselho de Ministros",
+        "description": "Procede à alteração do Código do Trabalho",
+        "category": "legislação_geral",
+        "keywords": ["decreto-lei", "decreto", "legislação", "trabalho", "direito_trabalho", "laboral"],
         "source": DocumentSource.MANUAL,
         "url": "https://dre.pt/exemplo/decreto-lei-45-2023",
         "metadata": {
-            "category": "direito_trabalho",
-            "keywords": ["trabalho", "laboral", "emprego"]
+            "scraping_method": "manual",
+            "processing_version": "1.0"
         }
     },
     {
@@ -143,11 +151,15 @@ c) O pagamento das despesas de consumo e de utilização dos instrumentos de tra
         "document_type": DocumentType.PORTARIA,
         "document_number": "123/2023",
         "publication_date": "2023-07-10",
+        "issuing_body": "Ministério do Trabalho, Solidariedade e Segurança Social",
+        "description": "Regulamenta o regime de prestação subordinada de teletrabalho",
+        "category": "regulamentação_setorial",
+        "keywords": ["portaria", "regulamento", "trabalho", "direito_trabalho", "laboral"],
         "source": DocumentSource.MANUAL,
         "url": "https://dre.pt/exemplo/portaria-123-2023",
         "metadata": {
-            "category": "direito_trabalho",
-            "keywords": ["teletrabalho", "remoto", "trabalho"]
+            "scraping_method": "manual",
+            "processing_version": "1.0"
         }
     }
 ]
@@ -216,7 +228,8 @@ async def init_sample_data():
                         "start_char": chunk["start_char"],
                         "end_char": chunk["end_char"],
                         "document_type": doc_data["document_type"],
-                        "document_title": doc_data["title"]
+                        "document_title": doc_data["title"],
+                        "issuing_body": doc_data["issuing_body"]
                     },
                     "created_at": datetime.now()
                 }
