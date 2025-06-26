@@ -222,3 +222,62 @@ class DiarioRepublicaScraper:
             logger.error(f"Error searching for '{search_term}': {e}")
 
         return documents
+
+    def scrape_document_content(self, url: str) -> Optional[str]:
+        """Public method to scrape content from a single URL."""
+        try:
+            logger.info(f"Scraping content from: {url}")
+            
+            # Try Playwright approach for JavaScript rendering  
+            try:
+                import asyncio
+                import nest_asyncio
+                nest_asyncio.apply()  # Allow nested event loops
+                content = asyncio.run(self.scrape_with_playwright(url))
+                if content:
+                    return content
+            except Exception as e:
+                logger.warning(f"Playwright failed: {e}")
+            
+            # Fallback to Selenium if Playwright fails
+            logger.warning("Playwright failed, trying Selenium fallback...")
+            content = self.scrape_with_selenium(url)
+            if content:
+                return content
+            
+            # Final fallback to requests approach (likely won't work for dynamic content)
+            logger.warning("Both Playwright and Selenium failed, trying requests fallback...")
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Look for the main content area (static content)
+            content_selectors = [
+                '.Fragmento_Texto',
+                '.diploma-fragmento', 
+                '.content-body',
+                '.document-content',
+                '#content',
+                '.main-content'
+            ]
+            
+            content = None
+            for selector in content_selectors:
+                content_elem = soup.select_one(selector)
+                if content_elem:
+                    content = content_elem.get_text(strip=True)
+                    logger.debug(f"Found content with selector '{selector}': {len(content)} chars")
+                    break
+            
+            # Clean up the content
+            if content:
+                content = re.sub(r'\s+', ' ', content)
+                content = re.sub(r'\n\s*\n', '\n\n', content)
+                
+            logger.info(f"Final content length: {len(content) if content else 0} characters")
+            return content if content and len(content) > 100 else None
+            
+        except Exception as e:
+            logger.error(f"Error scraping {url}: {e}")
+            return None

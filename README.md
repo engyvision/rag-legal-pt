@@ -94,12 +94,14 @@ A Retrieval-Augmented Generation (RAG) system for Portuguese law that enables us
 - **Frontend Service** (Cloud Run)
   - Python/Streamlit web interface
   - Natural language query input
+  - **Data Ingestion Control Panel** - Web-based UI for managing document scraping
   - Document upload functionality (Stage 2)
 - **Retrieval Service** (Cloud Run)
   - Query processing and expansion
   - Vector similarity search via MongoDB Atlas
   - Context retrieval and ranking
   - Integration with Vertex AI for LLM responses
+  - **Data ingestion API endpoints** for UI-controlled scraping
 
 ### 5. AI/ML Components
 
@@ -110,10 +112,25 @@ A Retrieval-Augmented Generation (RAG) system for Portuguese law that enables us
 
 ## Data Flow
 
-1. **Ingestion**: Legal documents scraped → Cloud Storage
+1. **Ingestion**: Legal documents scraped via UI or CLI → Cloud Storage
 2. **Processing**: Documents → Chunks → Embeddings → MongoDB Atlas
 3. **Query**: User question → Embedding → Vector search → Relevant contexts
 4. **Response**: Contexts + Query → LLM → Natural language answer with citations
+
+## Key Features
+
+### Data Management
+- **Web-based Data Ingestion Control Panel**: User-friendly interface for managing document scraping
+- **Selective Document Scraping**: Choose specific documents from CSV files to scrape
+- **Configurable Embedding Parameters**: Adjust chunk size and overlap with real-time estimates
+- **Progress Monitoring**: Track scraping success/failure with detailed feedback
+- **Duplicate Detection**: Automatically skip already-scraped documents
+
+### Query Interface
+- Natural language queries in Portuguese
+- Semantic search with vector embeddings
+- Context-aware responses with legal citations
+- Multi-language support (Portuguese/English)
 
 ## Technology Stack
 

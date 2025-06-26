@@ -40,6 +40,9 @@ docker-compose up --build
 # Run individual services
 python -m src.retrieval_service.main        # API server on port 8000
 streamlit run src/frontend_service/app.py   # Frontend on port 8501
+
+# Access Data Ingestion UI
+# Navigate to http://localhost:8501 and click "Data Ingestion Control" in sidebar
 ```
 
 ### Testing
@@ -161,6 +164,30 @@ Documents are stored in MongoDB with the following structure:
 4. **Vector Index**: Name must be exactly `vector_index` with 3072 dimensions, cosine similarity
 
 ## Common Workflows
+
+### Managing Document Ingestion
+
+**Recommended Approach: Web UI**
+1. Start both services (`docker-compose up --build`)
+2. Navigate to http://localhost:8501
+3. Click "Data Ingestion Control" in sidebar
+4. Load documents from CSV files in `data/legislationPT/`
+5. Select specific documents or batch selections
+6. Configure embedding parameters (chunk size, overlap)
+7. Monitor scraping progress with real-time feedback
+8. View ingestion statistics and success/failure rates
+
+**Key UI Features:**
+- Selective document scraping (avoid processing unwanted documents)
+- Parameter control with visual chunk estimates
+- Duplicate prevention (automatically skip already-scraped documents)
+- Progress monitoring with detailed error reporting
+- Filter by document type, CSV file, or existing status
+
+**Alternative: Command Line** (for automation)
+```bash
+python scripts/scrape_legislation.py
+```
 
 ### Adding New Features
 1. Implement in appropriate service directory

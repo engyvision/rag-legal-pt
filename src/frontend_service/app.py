@@ -188,9 +188,10 @@ def main():
     # Sidebar with language selector first
     with st.sidebar:
         # Language selector at the top
+        st.subheader("🌐 " + t("language_selector"))
         language_options = {"Português": "pt", "English": "en"}
         selected_language = st.selectbox(
-            t("language_selector"),
+            "",
             options=list(language_options.keys()),
             index=0 if st.session_state.language == "pt" else 1,
             key="language_selector",
@@ -203,7 +204,9 @@ def main():
             st.rerun()
 
         st.divider()
-        st.header(t("settings"))
+
+        # Settings section
+        st.subheader("⚙️ " + t("settings"))
 
         search_mode = st.radio(
             t("search_mode"),
@@ -221,8 +224,9 @@ def main():
 
         st.divider()
 
-        # Statistics
-        if st.button(t("view_stats")):
+        # Statistics section
+        st.subheader("📊 " + t("view_stats"))
+        if st.button(t("view_stats"), use_container_width=True):
             try:
                 stats = requests.get(f"{API_BASE}/stats").json()
                 st.metric(t("total_docs"), stats["total_documents"])
@@ -232,8 +236,8 @@ def main():
 
         st.divider()
 
-        # About
-        st.header(t("about"))
+        # About section
+        st.subheader("ℹ️ " + t("about"))
         st.info(t("about_text"))
 
     # Header

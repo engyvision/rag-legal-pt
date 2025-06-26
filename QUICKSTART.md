@@ -192,6 +192,38 @@ Try these queries in the frontend:
 - "Como funciona o teletrabalho segundo a legislação portuguesa?"
 - "Qual é o período normal de trabalho?"
 
+## Managing Document Ingestion
+
+The application now includes a web-based Data Ingestion Control Panel that provides a user-friendly alternative to command-line scraping.
+
+### Access the Data Ingestion UI
+
+1. Start both services (retrieval service and frontend)
+2. Navigate to http://localhost:8501
+3. Click "Data Ingestion Control" in the sidebar
+
+### Basic Workflow
+
+1. **Load Documents**: The UI automatically reads CSV files from `data/legislationPT/`
+2. **Preview & Select**: Browse available documents with metadata (title, issuing body, type)
+3. **Configure Parameters**: 
+   - Set chunk size (default: 1000 characters)
+   - Set overlap (default: 200 characters)
+   - View real-time estimates for chunks per document
+4. **Filter & Search**: Filter by CSV file, document type, or existing status
+5. **Scrape Selected**: Choose individual documents or batch selections
+6. **Monitor Progress**: Track scraping success/failure with detailed feedback
+
+### Key Features
+
+- **Selective Scraping**: Only scrape the documents you need
+- **Duplicate Prevention**: Automatically skips already-scraped documents
+- **Parameter Control**: Configure embedding settings with visual feedback
+- **Progress Tracking**: Real-time status updates during scraping
+- **Error Handling**: Clear feedback on failures with retry options
+
+This replaces the need to run `python scripts/scrape_legislation.py` directly, though the command-line approach still works for automated scenarios.
+
 ### API Testing
 
 ```bash

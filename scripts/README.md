@@ -30,6 +30,10 @@ python scripts/verify_setup.py
 ### Data Population
 ```bash
 # Option 1: Real legal documents (production)
+# RECOMMENDED: Use the Data Ingestion Control UI in the web interface
+# Navigate to http://localhost:8501 and click "Data Ingestion Control" in sidebar
+
+# Alternative: Command line scraping (for automation)
 python scripts/scrape_legislation.py
 
 # Option 2: Sample data (testing)
@@ -44,7 +48,22 @@ python scripts/test_vector_search.py
 
 ## Legal Document Scraper Details
 
-The `scrape_legislation.py` script:
+### Web UI Approach (Recommended)
+
+For a more user-friendly approach, use the **Data Ingestion Control UI** in the web interface:
+
+- **Access**: Navigate to http://localhost:8501 → "Data Ingestion Control"
+- **Features**: 
+  - Browse and select specific documents before scraping
+  - Configure embedding parameters with real-time estimates
+  - Monitor progress with success/failure tracking
+  - Filter by document type, CSV file, or status
+  - Automatic duplicate prevention
+- **Benefits**: Better control, visibility, and error handling than command-line
+
+### Command Line Approach
+
+The `scrape_legislation.py` script (still available for automation):
 
 1. **Reads CSV files** from `data/legislationPT/` (Lei.csv, Decreto-Lei.csv, etc.)
 2. **Extracts metadata** (title, document number, publication date, issuing body)
