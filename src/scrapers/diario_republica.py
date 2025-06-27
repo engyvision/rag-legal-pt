@@ -223,6 +223,196 @@ class DiarioRepublicaScraper:
 
         return documents
 
+    async def scrape_with_playwright(self, url: str) -> Optional[str]:
+        """Scrape content using Playwright for JavaScript rendering."""
+        try:
+            from playwright.async_api import async_playwright
+            
+            async with async_playwright() as p:
+                browser_options = {
+                    'headless': True,
+                    'args': [
+                        '--no-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--disable-software-rasterizer'
+                    ]
+                }
+                
+                browser = await p.chromium.launch(**browser_options)
+                page = await browser.new_page()
+                
+                try:
+                    await page.set_extra_http_headers({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    })
+                    
+                    logger.info("Loading page with Playwright...")
+                    await page.goto(url, wait_until='networkidle', timeout=30000)
+                    await page.wait_for_selector('.Fragmento_Texto', timeout=20000)
+                    
+                    # Extract structured content
+                    document_parts = []
+                    
+                    # Get main document intro
+                    try:
+                        intro_text = await page.text_content('div.Fragmento_Texto.diploma-fragmento')
+                        if intro_text and intro_text.strip():
+                            document_parts.append("=== DOCUMENTO ===")
+                            document_parts.append(intro_text.strip())
+                            document_parts.append("")
+                    except:
+                        pass
+                    
+                    # Get all articles
+                    article_containers = await page.query_selector_all('div.fragmento-full-width')
+                    
+                    for container in article_containers:
+                        try:
+                            title_elem = await container.query_selector('.Fragmento_Titulo')
+                            title = await title_elem.text_content() if title_elem else ""
+                            
+                            subject_elem = await container.query_selector('.Fragmento_Epigrafe')
+                            subject = await subject_elem.text_content() if subject_elem else ""
+                            
+                            content_elem = await container.query_selector('.Fragmento_Texto.diploma-fragmento')
+                            content = await content_elem.text_content() if content_elem else ""
+                            
+                            if title or subject or content:
+                                if title and title.strip():
+                                    document_parts.append(f"=== {title.strip().upper()} ===")
+                                if subject and subject.strip():
+                                    document_parts.append(subject.strip())
+                                if content and content.strip():
+                                    document_parts.append(content.strip())
+                                document_parts.append("")
+                                
+                        except Exception as e:
+                            logger.debug(f"Error processing article: {e}")
+                            continue
+                    
+                    full_content = '\n'.join(document_parts).strip()
+                    
+                    if len(full_content) > 500:
+                        logger.info(f"✓ Playwright extracted {len(full_content)} characters")
+                        return full_content
+                    else:
+                        logger.warning(f"Playwright extracted insufficient content: {len(full_content)} chars")
+                        return None
+                        
+                finally:
+                    await browser.close()
+                    
+        except ImportError:
+            logger.warning("Playwright not available")
+            return None
+        except Exception as e:
+            logger.error(f"Playwright error: {e}")
+            return None
+
+    def scrape_with_selenium(self, url: str) -> Optional[str]:
+        """Scrape content using Selenium for JavaScript rendering."""
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.chrome.options import Options
+            from selenium.common.exceptions import TimeoutException, WebDriverException
+            from webdriver_manager.chrome import ChromeDriverManager
+            from selenium.webdriver.chrome.service import Service
+            
+            # Chrome options for headless browsing
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-plugins')
+            
+            # Use webdriver-manager to handle Chrome driver setup
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+            
+            try:
+                logger.info("Loading page with Selenium...")
+                driver.get(url)
+                
+                # Wait for the content to load (look for article elements)
+                wait = WebDriverWait(driver, 20)
+                wait.until(EC.presence_of_element_located((By.CLASS_NAME, "Fragmento_Texto")))
+                
+                # Extract structured content
+                document_parts = []
+                
+                # Get main document title and intro
+                try:
+                    intro_elem = driver.find_element(By.CSS_SELECTOR, "div.Fragmento_Texto.diploma-fragmento")
+                    if intro_elem:
+                        intro_text = intro_elem.text.strip()
+                        if intro_text:
+                            document_parts.append("=== DOCUMENTO ===")
+                            document_parts.append(intro_text)
+                            document_parts.append("")
+                except:
+                    pass
+                
+                # Get all articles
+                article_containers = driver.find_elements(By.CSS_SELECTOR, "div.fragmento-full-width")
+                
+                for container in article_containers:
+                    try:
+                        # Get article title
+                        title_elem = container.find_element(By.CSS_SELECTOR, ".Fragmento_Titulo")
+                        title = title_elem.text.strip() if title_elem else ""
+                        
+                        # Get article subject/epigraph
+                        subject_elem = container.find_element(By.CSS_SELECTOR, ".Fragmento_Epigrafe")
+                        subject = subject_elem.text.strip() if subject_elem else ""
+                        
+                        # Get article content
+                        content_elem = container.find_element(By.CSS_SELECTOR, ".Fragmento_Texto.diploma-fragmento")
+                        content = content_elem.text.strip() if content_elem else ""
+                        
+                        # Build article section
+                        if title or subject or content:
+                            if title:
+                                document_parts.append(f"=== {title.upper()} ===")
+                            if subject:
+                                document_parts.append(subject)
+                            if content:
+                                document_parts.append(content)
+                            document_parts.append("")
+                            
+                    except Exception as e:
+                        logger.debug(f"Error processing article container: {e}")
+                        continue
+                
+                # Combine all parts
+                full_content = '\n'.join(document_parts).strip()
+                
+                if len(full_content) > 500:  # Substantial content
+                    logger.info(f"✓ Selenium extracted {len(full_content)} characters")
+                    return full_content
+                else:
+                    logger.warning(f"Selenium extracted insufficient content: {len(full_content)} chars")
+                    return None
+                    
+            finally:
+                driver.quit()
+                
+        except ImportError:
+            logger.warning("Selenium not available - install with: pip install selenium")
+            return None
+        except (TimeoutException, WebDriverException) as e:
+            logger.error(f"Selenium error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected Selenium error: {e}")
+            return None
+
     def scrape_document_content(self, url: str) -> Optional[str]:
         """Public method to scrape content from a single URL."""
         try:

@@ -10,9 +10,8 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import json
+import time
 
 # Add parent directory to path for imports
 import sys
@@ -70,6 +69,39 @@ st.markdown("""
         border-radius: 0.5rem;
         margin: 1rem 0;
     }
+    .analytics-card {
+        background-color: #ffffff;
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        margin: 1rem 0;
+        border: 1px solid #e1e5e9;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .analytics-header {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #1f2937;
+    }
+    .metric-card {
+        background-color: #f8fafc;
+        padding: 0.75rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+        border-left: 4px solid #3b82f6;
+    }
+    .warning-card {
+        border-left-color: #f59e0b;
+        background-color: #fffbeb;
+    }
+    .error-card {
+        border-left-color: #ef4444;
+        background-color: #fef2f2;
+    }
+    .success-card {
+        border-left-color: #10b981;
+        background-color: #f0fdf4;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -84,6 +116,17 @@ if "documents_data" not in st.session_state:
     st.session_state.documents_data = []
 if "scraping_in_progress" not in st.session_state:
     st.session_state.scraping_in_progress = False
+if "analytics_data" not in st.session_state:
+    st.session_state.analytics_data = {
+        "type_stats": None,
+        "chunk_anomalies": None,
+        "rescrape_candidates": None,
+        "last_updated": None
+    }
+if "show_analytics" not in st.session_state:
+    st.session_state.show_analytics = False
+if "force_rescrape" not in st.session_state:
+    st.session_state.force_rescrape = False
 
 
 def extract_document_number(title: str, doc_type: DocumentType) -> Optional[str]:
@@ -200,7 +243,7 @@ def read_csv_files(data_dir: Path) -> List[Dict]:
     return all_documents
 
 
-async def scrape_selected_documents(selected_docs: List[Dict], chunk_size: int, chunk_overlap: int):
+def scrape_selected_documents(selected_docs: List[Dict], chunk_size: int, chunk_overlap: int, force_rescrape: bool = False):
     """Scrape selected documents with progress tracking."""
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -229,6 +272,7 @@ async def scrape_selected_documents(selected_docs: List[Dict], chunk_size: int, 
                     "publication_date": doc["publication_date"],
                     "chunk_size": chunk_size,
                     "chunk_overlap": chunk_overlap,
+                    "force_rescrape": force_rescrape,
                     "metadata": {
                         "csv_file": doc["csv_file"],
                         "manual_ingestion": True,
@@ -242,11 +286,27 @@ async def scrape_selected_documents(selected_docs: List[Dict], chunk_size: int, 
                 result = response.json()
                 successful += 1
                 with results_container:
-                    st.success(f"✅ {doc['title'][:50]}... - {result.get('chunks_created', 0)} chunks created")
+                    status = result.get('status', 'success')
+                    chunks_created = result.get('chunks_created', 0)
+                    chunks_deleted = result.get('chunks_deleted', 0)
+                    
+                    if status == 're_scraped':
+                        st.success(f"🔄 {doc['title'][:50]}... - Re-scraped: {chunks_deleted} old chunks deleted, {chunks_created} new chunks created")
+                    elif status == 'already_exists':
+                        st.info(f"ℹ️ {doc['title'][:50]}... - Already exists, skipped")
+                    else:
+                        st.success(f"✅ {doc['title'][:50]}... - {chunks_created} chunks created")
             else:
                 failed += 1
                 with results_container:
                     st.error(f"❌ {doc['title'][:50]}... - Error: {response.status_code}")
+                    if response.status_code != 200:
+                        try:
+                            error_detail = response.json().get('detail', 'Unknown error')
+                            with results_container:
+                                st.error(f"Details: {error_detail}")
+                        except:
+                            pass
                     
         except Exception as e:
             failed += 1
@@ -254,12 +314,168 @@ async def scrape_selected_documents(selected_docs: List[Dict], chunk_size: int, 
                 st.error(f"❌ {doc['title'][:50]}... - Error: {str(e)}")
         
         # Add delay to be respectful
-        await asyncio.sleep(1)
+        time.sleep(1)
     
     progress_bar.empty()
     status_text.empty()
     
     return successful, failed
+
+
+def fetch_analytics_data():
+    """Fetch all analytics data from the API endpoints."""
+    analytics = {
+        "type_stats": None,
+        "chunk_anomalies": None,
+        "rescrape_candidates": None,
+        "last_updated": datetime.now()
+    }
+    
+    try:
+        # Fetch document statistics by type
+        response = requests.get(f"{API_BASE}/document-statistics-by-type")
+        if response.status_code == 200:
+            analytics["type_stats"] = response.json().get("statistics_by_type", [])
+    except Exception as e:
+        st.error(f"Error fetching type statistics: {e}")
+    
+    try:
+        # Fetch chunk anomalies
+        response = requests.get(f"{API_BASE}/chunk-anomalies")
+        if response.status_code == 200:
+            analytics["chunk_anomalies"] = response.json().get("anomalous_documents", [])
+    except Exception as e:
+        st.error(f"Error fetching chunk anomalies: {e}")
+    
+    try:
+        # Fetch re-scrape candidates
+        response = requests.get(f"{API_BASE}/rescrape-candidates?days_old=30")
+        if response.status_code == 200:
+            analytics["rescrape_candidates"] = response.json().get("rescrape_candidates", [])
+    except Exception as e:
+        st.error(f"Error fetching rescrape candidates: {e}")
+    
+    return analytics
+
+
+def render_type_statistics_card(type_stats):
+    """Render document type statistics card."""
+    if not type_stats:
+        st.warning("No type statistics available")
+        return
+    
+    st.markdown('<div class="analytics-card">', unsafe_allow_html=True)
+    st.markdown('<div class="analytics-header">📊 Document Type Distribution</div>', unsafe_allow_html=True)
+    
+    # Show top 5 document types
+    top_types = type_stats[:5]
+    
+    for stat in top_types:
+        doc_type = stat.get("document_type", "Unknown")
+        doc_count = stat.get("document_count", 0)
+        avg_chunks = stat.get("avg_chunks_per_doc", 0)
+        avg_size = stat.get("avg_text_size_per_doc", 0)
+        
+        col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+        with col1:
+            st.markdown(f"**{doc_type}**")
+        with col2:
+            st.metric("Docs", f"{doc_count:,}")
+        with col3:
+            st.metric("Avg Chunks", f"{avg_chunks:.1f}")
+        with col4:
+            st.metric("Avg Size", f"{avg_size:,.0f}")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_quality_issues_card(chunk_anomalies):
+    """Render quality issues card."""
+    st.markdown('<div class="analytics-card">', unsafe_allow_html=True)
+    st.markdown('<div class="analytics-header">⚠️ Quality Issues</div>', unsafe_allow_html=True)
+    
+    if not chunk_anomalies:
+        st.markdown('<div class="success-card metric-card">✅ No quality issues detected</div>', unsafe_allow_html=True)
+    else:
+        # Group by anomaly type
+        anomaly_counts = {}
+        for doc in chunk_anomalies:
+            reason = doc.get("anomaly_reasons", "unknown")
+            anomaly_counts[reason] = anomaly_counts.get(reason, 0) + 1
+        
+        # Display summary
+        st.markdown(f'<div class="warning-card metric-card">Found {len(chunk_anomalies)} documents with issues</div>', unsafe_allow_html=True)
+        
+        # Show breakdown by issue type
+        for reason, count in anomaly_counts.items():
+            col1, col2, col3 = st.columns([3, 1, 1])
+            with col1:
+                reason_display = reason.replace("_", " ").title()
+                st.write(f"• {reason_display}")
+            with col2:
+                st.metric("Count", count)
+            with col3:
+                if st.button(f"Select", key=f"select_anomaly_{reason}"):
+                    # Select documents with this anomaly type
+                    for doc in chunk_anomalies:
+                        if doc.get("anomaly_reasons") == reason:
+                            # Find matching document in session state by URL
+                            for session_doc in st.session_state.documents_data:
+                                if session_doc["link"] == doc.get("url"):
+                                    st.session_state.selected_documents.add(session_doc["id"])
+                    st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_maintenance_card(rescrape_candidates):
+    """Render maintenance recommendations card."""
+    st.markdown('<div class="analytics-card">', unsafe_allow_html=True)
+    st.markdown('<div class="analytics-header">🔧 Maintenance Recommendations</div>', unsafe_allow_html=True)
+    
+    if not rescrape_candidates:
+        st.markdown('<div class="success-card metric-card">✅ No maintenance needed</div>', unsafe_allow_html=True)
+    else:
+        # Group by age buckets
+        age_buckets = {"0-7 days": 0, "8-30 days": 0, "31-90 days": 0, "90+ days": 0}
+        
+        for doc in rescrape_candidates:
+            days_old = doc.get("days_old", 0)
+            if days_old <= 7:
+                age_buckets["0-7 days"] += 1
+            elif days_old <= 30:
+                age_buckets["8-30 days"] += 1
+            elif days_old <= 90:
+                age_buckets["31-90 days"] += 1
+            else:
+                age_buckets["90+ days"] += 1
+        
+        st.markdown(f'<div class="warning-card metric-card">Found {len(rescrape_candidates)} documents needing attention</div>', unsafe_allow_html=True)
+        
+        # Show age distribution
+        for bucket, count in age_buckets.items():
+            if count > 0:
+                col1, col2, col3 = st.columns([3, 1, 1])
+                with col1:
+                    st.write(f"• {bucket} old")
+                with col2:
+                    st.metric("Count", count)
+                with col3:
+                    if st.button(f"Select", key=f"select_rescrape_{bucket}"):
+                        # Select documents in this age bucket
+                        for doc in rescrape_candidates:
+                            days_old = doc.get("days_old", 0)
+                            if ((bucket == "0-7 days" and days_old <= 7) or
+                                (bucket == "8-30 days" and 8 <= days_old <= 30) or
+                                (bucket == "31-90 days" and 31 <= days_old <= 90) or
+                                (bucket == "90+ days" and days_old > 90)):
+                                # Find matching document in session state by URL
+                                for session_doc in st.session_state.documents_data:
+                                    if session_doc["link"] == doc.get("url"):
+                                        st.session_state.selected_documents.add(session_doc["id"])
+                        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def main():
@@ -321,6 +537,22 @@ def main():
                     st.session_state.selected_documents.add(doc["id"])
                     count += 1
             st.rerun()
+        
+        st.divider()
+        
+        # Re-scraping options
+        st.header("🔄 Re-scraping Options")
+        
+        force_rescrape = st.checkbox(
+            "Force Re-scrape",
+            help="Re-scrape documents even if they already exist. This will delete old chunks and create new ones with current parameters."
+        )
+        
+        if force_rescrape:
+            st.warning("⚠️ This will delete existing chunks and re-create them with new parameters!")
+        
+        # Store in session state
+        st.session_state.force_rescrape = force_rescrape
     
     # Main content area
     data_dir = Path("data/legislationPT")
@@ -334,16 +566,106 @@ def main():
     if st.button("🔄 Load/Refresh Document List"):
         with st.spinner("Loading documents from CSV files..."):
             documents = read_csv_files(data_dir)
-            st.session_state.documents_data = documents
             
-            # Check existing documents
-            # Note: This would require implementing the check-existing-documents endpoint
-            # For now, we'll simulate this
-            st.success(f"Loaded {len(documents)} documents from CSV files")
+            # Check which documents already exist in the database
+            with st.spinner("Checking existing documents in database..."):
+                try:
+                    # Make the API call to check existing documents
+                    response = requests.post(
+                        f"{API_BASE}/check-existing-documents",
+                        json={"urls": [doc["link"] for doc in documents]}
+                    )
+                    
+                    if response.status_code == 200:
+                        existing_docs = response.json()
+                        
+                        # Update document statuses based on database check
+                        for doc in documents:
+                            if doc["link"] in existing_docs:
+                                doc_info = existing_docs[doc["link"]]
+                                doc["is_scraped"] = True
+                                doc["scrape_status"] = "scraped"
+                                doc["last_scraped"] = doc_info.get("last_updated", "Unknown")
+                                
+                                # Store actual chunk information
+                                doc["actual_chunks"] = doc_info.get("chunks_count", 0)
+                                doc["actual_text_length"] = doc_info.get("total_text_length", 0)
+                                doc["avg_chunk_size"] = doc_info.get("avg_chunk_size", 0)
+                                
+                                # Update estimated length with actual if available
+                                if doc_info.get("total_text_length", 0) > 0:
+                                    doc["estimated_length"] = doc_info["total_text_length"]
+                                
+                        st.success(f"Loaded {len(documents)} documents from CSV files")
+                        st.info(f"Found {len(existing_docs)} documents already in database")
+                        
+                        # Show some statistics
+                        total_chunks = sum(doc.get("actual_chunks", 0) for doc in documents if doc["is_scraped"])
+                        total_text = sum(doc.get("actual_text_length", 0) for doc in documents if doc["is_scraped"])
+                        
+                        if total_chunks > 0:
+                            avg_chunk_size = total_text // total_chunks if total_chunks > 0 else 0
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Total Existing Chunks", f"{total_chunks:,}")
+                            with col2:
+                                st.metric("Average Chunk Size", f"{avg_chunk_size:,} chars")
+                            
+                    else:
+                        st.warning("Could not check existing documents in database")
+                        st.success(f"Loaded {len(documents)} documents from CSV files")
+                        
+                except Exception as e:
+                    st.error(f"Error checking database: {str(e)}")
+                    st.success(f"Loaded {len(documents)} documents from CSV files (database check failed)")
+            
+            st.session_state.documents_data = documents
     
     if not st.session_state.documents_data:
         st.info("Click 'Load/Refresh Document List' to start")
         return
+    
+    # Add database sync status summary
+    scraped_count = sum(1 for doc in st.session_state.documents_data if doc["is_scraped"])
+    pending_count = len(st.session_state.documents_data) - scraped_count
+    
+    st.info(f"""
+    **Database Sync Status:**
+    - ✅ Already in database: {scraped_count}
+    - ⏳ Not yet scraped: {pending_count}
+    - 📊 Total documents: {len(st.session_state.documents_data)}
+    """)
+    
+    # Add refresh button to re-check database status without reloading CSVs
+    if st.button("🔄 Refresh Database Status", help="Check database again without reloading CSV files"):
+        if st.session_state.documents_data:
+            with st.spinner("Checking database status..."):
+                try:
+                    response = requests.post(
+                        f"{API_BASE}/check-existing-documents",
+                        json={"urls": [doc["link"] for doc in st.session_state.documents_data]}
+                    )
+                    
+                    if response.status_code == 200:
+                        existing_docs = response.json()
+                        
+                        # Update statuses
+                        updated_count = 0
+                        for doc in st.session_state.documents_data:
+                            if doc["link"] in existing_docs and not doc["is_scraped"]:
+                                doc_info = existing_docs[doc["link"]]
+                                doc["is_scraped"] = True
+                                doc["scrape_status"] = "scraped"
+                                doc["last_scraped"] = doc_info.get("last_updated", "Unknown")
+                                doc["actual_chunks"] = doc_info.get("chunks_count", 0)
+                                updated_count += 1
+                        
+                        st.success(f"Updated status for {updated_count} documents")
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to check database: HTTP {response.status_code}")
+                except Exception as e:
+                    st.error(f"Error checking database: {str(e)}")
     
     # Display statistics
     col1, col2, col3, col4 = st.columns(4)
@@ -360,13 +682,77 @@ def main():
         st.metric("Already Scraped", scraped_count)
     
     with col4:
-        # Estimate total chunks for selected documents
-        total_chunks = sum(
-            estimate_chunks(doc["estimated_length"], chunk_size, chunk_overlap)
-            for doc in st.session_state.documents_data
-            if doc["id"] in st.session_state.selected_documents
-        )
-        st.metric("Estimated Chunks", total_chunks)
+        # Calculate chunks more accurately
+        total_chunks = 0
+        for doc in st.session_state.documents_data:
+            if doc["id"] in st.session_state.selected_documents:
+                if doc["is_scraped"] and "actual_chunks" in doc:
+                    # Use actual chunks for already scraped docs
+                    total_chunks += doc["actual_chunks"]
+                else:
+                    # Use estimate for unscraped docs
+                    total_chunks += estimate_chunks(doc["estimated_length"], chunk_size, chunk_overlap)
+        
+        st.metric("Total Chunks", f"{total_chunks:,}")
+    
+    # Advanced Analytics Section
+    st.divider()
+    
+    # Analytics header with toggle
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.header("🔍 Advanced Analytics")
+    with col2:
+        if st.button("🔄 Refresh Analytics", help="Fetch latest analytics data"):
+            with st.spinner("Fetching analytics data..."):
+                st.session_state.analytics_data = fetch_analytics_data()
+                st.session_state.show_analytics = True
+            st.rerun()
+    
+    # Show/hide analytics toggle
+    if st.checkbox("Show Advanced Analytics", value=st.session_state.show_analytics):
+        st.session_state.show_analytics = True
+        
+        # Fetch analytics data if not available
+        if (st.session_state.analytics_data["type_stats"] is None or
+            st.session_state.analytics_data["chunk_anomalies"] is None or
+            st.session_state.analytics_data["rescrape_candidates"] is None):
+            with st.spinner("Loading analytics data..."):
+                st.session_state.analytics_data = fetch_analytics_data()
+        
+        # Display analytics cards in columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Document Type Statistics
+            render_type_statistics_card(st.session_state.analytics_data["type_stats"])
+            
+            # Quality Issues
+            render_quality_issues_card(st.session_state.analytics_data["chunk_anomalies"])
+        
+        with col2:
+            # Maintenance Recommendations
+            render_maintenance_card(st.session_state.analytics_data["rescrape_candidates"])
+            
+            # Analytics summary
+            st.markdown('<div class="analytics-card">', unsafe_allow_html=True)
+            st.markdown('<div class="analytics-header">📈 Quick Summary</div>', unsafe_allow_html=True)
+            
+            if st.session_state.analytics_data["last_updated"]:
+                st.caption(f"Last updated: {st.session_state.analytics_data['last_updated'].strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Summary metrics
+            type_count = len(st.session_state.analytics_data["type_stats"] or [])
+            anomaly_count = len(st.session_state.analytics_data["chunk_anomalies"] or [])
+            rescrape_count = len(st.session_state.analytics_data["rescrape_candidates"] or [])
+            
+            st.metric("Document Types", type_count)
+            st.metric("Quality Issues", anomaly_count)
+            st.metric("Maintenance Items", rescrape_count)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.session_state.show_analytics = False
     
     # Scraping controls
     st.divider()
@@ -452,16 +838,32 @@ def main():
                 st.markdown(f"**{doc['title'][:80]}...**")
                 st.caption(f"{doc['issuing_body']} | {doc['document_type']}")
                 
-                # Estimated chunks for this document
-                est_chunks = estimate_chunks(doc["estimated_length"], chunk_size, chunk_overlap)
-                st.caption(f"📊 Estimated chunks: {est_chunks}")
+                # Show chunk information
+                if doc["is_scraped"] and "actual_chunks" in doc:
+                    # Show actual chunks and text length
+                    st.caption(f"📊 Chunks: {doc['actual_chunks']} | "
+                              f"📝 Length: {doc.get('actual_text_length', 0):,} chars")
+                else:
+                    # Show estimated chunks for unscraped documents
+                    est_chunks = estimate_chunks(doc["estimated_length"], chunk_size, chunk_overlap)
+                    st.caption(f"📊 Est. chunks: ~{est_chunks} | "
+                              f"📝 Est. length: ~{doc['estimated_length']:,} chars")
             
             with col3:
                 # Status and metadata
                 if doc["is_scraped"]:
                     st.markdown('<span class="scraped-indicator">✅ Scraped</span>', unsafe_allow_html=True)
                     if doc["last_scraped"]:
-                        st.caption(f"Last: {doc['last_scraped']}")
+                        try:
+                            last_scraped = datetime.fromisoformat(doc["last_scraped"].replace('Z', '+00:00'))
+                            formatted_date = last_scraped.strftime("%Y-%m-%d %H:%M")
+                            st.caption(f"Last: {formatted_date}")
+                        except:
+                            st.caption(f"Last: {doc['last_scraped']}")
+                    
+                    # Show average chunk size if available
+                    if doc.get("avg_chunk_size"):
+                        st.caption(f"Avg chunk: {doc['avg_chunk_size']:,} chars")
                 else:
                     st.markdown('<span class="pending-indicator">⏳ Pending</span>', unsafe_allow_html=True)
                 
@@ -485,11 +887,12 @@ def main():
         ]
         
         if selected_docs:
-            # Run scraping
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            successful, failed = loop.run_until_complete(
-                scrape_selected_documents(selected_docs, chunk_size, chunk_overlap)
+            # Run scraping (now synchronous)
+            successful, failed = scrape_selected_documents(
+                selected_docs, 
+                chunk_size, 
+                chunk_overlap, 
+                st.session_state.get('force_rescrape', False)
             )
             
             st.success(f"✅ Scraping completed! Successful: {successful}, Failed: {failed}")
@@ -501,6 +904,9 @@ def main():
             # Refresh button
             if st.button("🔄 Refresh Document List"):
                 st.rerun()
+        else:
+            st.error("No documents selected for scraping!")
+            st.session_state.scraping_in_progress = False
 
 
 if __name__ == "__main__":
