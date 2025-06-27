@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List, Optional
 import logging
-from pydantic import BaseModel
 from datetime import datetime
 
 from ..services.retrieval import RetrievalService
@@ -73,9 +72,7 @@ async def search_documents(request: QueryRequest):
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
-async def upload_document(
-    file: UploadFile = File(...), document_type: Optional[str] = "legal_document"
-):
+async def upload_document(file: UploadFile = File(...), document_type: Optional[str] = "legal_document"):
     """
     Upload a document for processing.
     """
@@ -88,9 +85,7 @@ async def upload_document(
             )
 
         # Process upload
-        result = await processing_service.process_upload(
-            file=file, document_type=document_type
-        )
+        result = await processing_service.process_upload(file=file, document_type=document_type)
 
         return DocumentUploadResponse(**result)
 
@@ -105,9 +100,7 @@ async def process_document(request: DocumentProcessRequest):
     Process a document from Cloud Storage.
     """
     try:
-        result = await processing_service.process_document(
-            gcs_path=request.gcs_path, metadata=request.metadata
-        )
+        result = await processing_service.process_document(gcs_path=request.gcs_path, metadata=request.metadata)
 
         return {"status": "processed", "document_id": result}
 
@@ -117,17 +110,13 @@ async def process_document(request: DocumentProcessRequest):
 
 
 @router.post("/analyze-contract")
-async def analyze_contract(
-    file: UploadFile = File(...), analysis_type: str = "comprehensive"
-):
+async def analyze_contract(file: UploadFile = File(...), analysis_type: str = "comprehensive"):
     """
     Analyze a contract document (Stage 2 feature).
     """
     try:
         # Upload and process
-        upload_result = await processing_service.process_upload(
-            file=file, document_type="contract"
-        )
+        upload_result = await processing_service.process_upload(file=file, document_type="contract")
 
         # Analyze contract
         analysis = await retrieval_service.analyze_contract(
@@ -175,9 +164,7 @@ async def get_statistics():
         from ..core.config import settings
 
         docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
-        vectors_collection = mongodb_client.async_db[
-            settings.mongodb_collection_vectors
-        ]
+        vectors_collection = mongodb_client.async_db[settings.mongodb_collection_vectors]
 
         doc_count = await docs_collection.count_documents({})
         vector_count = await vectors_collection.count_documents({})
@@ -201,6 +188,7 @@ async def get_statistics():
 
 # Add these routes to src/retrieval_service/api/routes.py after the existing routes
 
+
 @router.post("/check-existing-documents")
 async def check_existing_documents(request: dict):
     """
@@ -210,94 +198,95 @@ async def check_existing_documents(request: dict):
     try:
         urls = request.get("urls", [])
         existing_docs = {}
-        
+
         from ..core.mongodb import mongodb_client
         from ..core.config import settings
-        
+
         docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
         vectors_collection = mongodb_client.async_db[settings.mongodb_collection_vectors]
-        
+
         # Step 1: Get all documents that match the URLs in a single query
-        documents = await docs_collection.find(
-            {"url": {"$in": urls}}
-        ).to_list(length=None)
-        
+        documents = await docs_collection.find({"url": {"$in": urls}}).to_list(length=None)
+
         if not documents:
             return existing_docs
-        
+
         # Create a mapping of document IDs to URLs for later use
         doc_id_to_url = {doc["_id"]: doc["url"] for doc in documents}
         doc_ids = list(doc_id_to_url.keys())
-        
+
         # Step 2: Use aggregation to get chunk information for all documents at once
         pipeline = [
             # Match all chunks for our documents
             {"$match": {"document_id": {"$in": doc_ids}}},
-            
             # Group by document_id to get counts and sizes
-            {"$group": {
-                "_id": "$document_id",
-                "num_chunks": {"$sum": 1},
-                "chunk_sizes": {"$push": {"$strLenCP": "$text"}},  # Get length of each chunk
-                "total_text_length": {"$sum": {"$strLenCP": "$text"}},
-                "avg_chunk_size": {"$avg": {"$strLenCP": "$text"}}
-            }},
-            
+            {
+                "$group": {
+                    "_id": "$document_id",
+                    "num_chunks": {"$sum": 1},
+                    "chunk_sizes": {"$push": {"$strLenCP": "$text"}},  # Get length of each chunk
+                    "total_text_length": {"$sum": {"$strLenCP": "$text"}},
+                    "avg_chunk_size": {"$avg": {"$strLenCP": "$text"}},
+                }
+            },
             # Optional: Add document info (if you want more details)
-            {"$lookup": {
-                "from": settings.mongodb_collection_documents,
-                "localField": "_id",
-                "foreignField": "_id",
-                "as": "document_info"
-            }},
-            
+            {
+                "$lookup": {
+                    "from": settings.mongodb_collection_documents,
+                    "localField": "_id",
+                    "foreignField": "_id",
+                    "as": "document_info",
+                }
+            },
             # Unwind the document info (since it's an array)
-            {"$unwind": {
-                "path": "$document_info",
-                "preserveNullAndEmptyArrays": True
-            }},
-            
+            {"$unwind": {"path": "$document_info", "preserveNullAndEmptyArrays": True}},
             # Project final fields
-            {"$project": {
-                "_id": 1,
-                "num_chunks": 1,
-                "chunk_sizes": 1,
-                "total_text_length": 1,
-                "avg_chunk_size": {"$round": ["$avg_chunk_size", 0]},
-                "document_type": "$document_info.document_type",
-                "title": "$document_info.title",
-                "updated_at": "$document_info.updated_at",
-                "created_at": "$document_info.created_at"
-            }}
+            {
+                "$project": {
+                    "_id": 1,
+                    "num_chunks": 1,
+                    "chunk_sizes": 1,
+                    "total_text_length": 1,
+                    "avg_chunk_size": {"$round": ["$avg_chunk_size", 0]},
+                    "document_type": "$document_info.document_type",
+                    "title": "$document_info.title",
+                    "updated_at": "$document_info.updated_at",
+                    "created_at": "$document_info.created_at",
+                }
+            },
         ]
-        
+
         # Execute aggregation
         chunk_results = await vectors_collection.aggregate(pipeline).to_list(length=None)
-        
+
         # Create a mapping of document_id to chunk info
         chunk_info_map = {result["_id"]: result for result in chunk_results}
-        
+
         # Step 3: Combine document and chunk information
         for doc in documents:
             doc_id = doc["_id"]
             url = doc["url"]
             chunk_info = chunk_info_map.get(doc_id, {})
-            
+
             existing_docs[url] = {
                 "exists": True,
                 "document_id": str(doc_id),
-                "last_updated": doc.get("updated_at", doc.get("created_at")).isoformat() if doc.get("updated_at") or doc.get("created_at") else None,
+                "last_updated": (
+                    doc.get("updated_at", doc.get("created_at")).isoformat()
+                    if doc.get("updated_at") or doc.get("created_at")
+                    else None
+                ),
                 "document_type": doc.get("document_type"),
                 "title": doc.get("title"),
                 "chunks_count": chunk_info.get("num_chunks", 0),
                 "total_text_length": chunk_info.get("total_text_length", 0),
                 "avg_chunk_size": chunk_info.get("avg_chunk_size", 0),
-                "chunk_sizes": chunk_info.get("chunk_sizes", [])[:5]  # Only first 5 to avoid large response
+                "chunk_sizes": chunk_info.get("chunk_sizes", [])[:5],  # Only first 5 to avoid large response
             }
-        
+
         logger.info(f"Checked {len(urls)} URLs, found {len(existing_docs)} existing documents")
         return existing_docs
-        
+
     except Exception as e:
         logger.error(f"Error checking existing documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -310,65 +299,63 @@ async def check_existing_documents_simple(request: dict):
     """
     try:
         urls = request.get("urls", [])
-        
+
         from ..core.mongodb import mongodb_client
         from ..core.config import settings
-        
+
         docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
-        
+
         # Single aggregation pipeline to get everything
         pipeline = [
             # Match documents by URL
             {"$match": {"url": {"$in": urls}}},
-            
             # Lookup chunk counts from vectors collection
-            {"$lookup": {
-                "from": settings.mongodb_collection_vectors,
-                "let": {"doc_id": "$_id"},
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}},
-                    {"$count": "count"}
-                ],
-                "as": "chunk_info"
-            }},
-            
-            # Extract the count from the array
-            {"$addFields": {
-                "chunks_count": {
-                    "$ifNull": [{"$arrayElemAt": ["$chunk_info.count", 0]}, 0]
+            {
+                "$lookup": {
+                    "from": settings.mongodb_collection_vectors,
+                    "let": {"doc_id": "$_id"},
+                    "pipeline": [{"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}}, {"$count": "count"}],
+                    "as": "chunk_info",
                 }
-            }},
-            
+            },
+            # Extract the count from the array
+            {"$addFields": {"chunks_count": {"$ifNull": [{"$arrayElemAt": ["$chunk_info.count", 0]}, 0]}}},
             # Project only needed fields
-            {"$project": {
-                "_id": 1,
-                "url": 1,
-                "document_type": 1,
-                "title": 1,
-                "updated_at": 1,
-                "created_at": 1,
-                "chunks_count": 1
-            }}
+            {
+                "$project": {
+                    "_id": 1,
+                    "url": 1,
+                    "document_type": 1,
+                    "title": 1,
+                    "updated_at": 1,
+                    "created_at": 1,
+                    "chunks_count": 1,
+                }
+            },
         ]
-        
+
         # Execute aggregation
         results = await docs_collection.aggregate(pipeline).to_list(length=None)
-        
+
         # Convert to expected format
         existing_docs = {}
         for doc in results:
             existing_docs[doc["url"]] = {
                 "exists": True,
                 "document_id": str(doc["_id"]),
-                "last_updated": doc.get("updated_at", doc.get("created_at")).isoformat() if doc.get("updated_at") or doc.get("created_at") else None,
+                "last_updated": (
+                    doc.get("updated_at", doc.get("created_at")).isoformat()
+                    if doc.get("updated_at") or doc.get("created_at")
+                    else None
+                ),
                 "document_type": doc.get("document_type"),
                 "title": doc.get("title"),
-                "chunks_count": doc.get("chunks_count", 0)
+                "chunks_count": doc.get("chunks_count", 0),
             }
-        
+
         logger.info(f"Checked {len(urls)} URLs, found {len(existing_docs)} existing documents (simple)")
         return existing_docs
-        
+
     except Exception as e:
         logger.error(f"Error checking existing documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -377,8 +364,8 @@ async def check_existing_documents_simple(request: dict):
 @router.post("/scrape-document")
 async def scrape_document(request: dict):
     """
-    Scrape a single document with custom parameters.
-    
+    Scrape a single document with article-aware chunking.
+
     Parameters:
     - url: Document URL to scrape
     - document_type: Type of document (lei, decreto_lei, etc.)
@@ -386,19 +373,22 @@ async def scrape_document(request: dict):
     - issuing_body: Issuing body/organization
     - description: Document description
     - chunk_size: Text chunk size for embeddings (default from settings)
-    - chunk_overlap: Overlap between chunks (default from settings)
+    - chunk_overlap: Overlap between chunks (not used for article chunking)
     - force_rescrape: Boolean - if True, will delete existing document and re-scrape
+    - use_article_chunking: Boolean - if True, use article-based chunking (default: True)
     - metadata: Additional metadata dictionary
-    
+
     Returns:
     - status: "success", "re_scraped", or "already_exists"
     - document_id: MongoDB document ID
     - chunks_created: Number of new chunks created
     - chunks_deleted: Number of old chunks deleted (when force_rescrape=True)
+    - chunking_method: Method used for chunking
+    - article_stats: Statistics about article detection
     """
     try:
         from src.scrapers.diario_republica import DiarioRepublicaScraper
-        
+
         # Extract parameters
         url = request.get("url")
         document_type = request.get("document_type")
@@ -409,53 +399,47 @@ async def scrape_document(request: dict):
         publication_date = request.get("publication_date")
         chunk_size = request.get("chunk_size", settings.chunk_size)
         chunk_overlap = request.get("chunk_overlap", settings.chunk_overlap)
+        use_article_chunking = request.get("use_article_chunking", True)
         metadata = request.get("metadata", {})
-        
+
         if not url:
             raise HTTPException(status_code=400, detail="URL is required")
-        
+
         # Initialize scraper
         scraper = DiarioRepublicaScraper()
-        
+
         # Check if document already exists
-        existing = await mongodb_client.async_db[
-            settings.mongodb_collection_documents
-        ].find_one({"url": url})
-        
+        existing = await mongodb_client.async_db[settings.mongodb_collection_documents].find_one({"url": url})
+
         force_rescrape = request.get("force_rescrape", False)
         chunks_deleted_count = 0
         was_existing = bool(existing)
-        
+
         if existing and not force_rescrape:
             return {
                 "status": "already_exists",
                 "document_id": str(existing["_id"]),
-                "message": "Document already exists in database"
+                "message": "Document already exists in database",
             }
         elif existing and force_rescrape:
-            # Delete existing document and all its chunks
+            # Delete existing document and chunks
             doc_id = existing["_id"]
-            
-            # Step 1: Delete old chunks for this document (following MongoDB best practices)
+
             vectors_collection = mongodb_client.async_db[settings.mongodb_collection_vectors]
             chunks_deleted = await vectors_collection.delete_many({"document_id": doc_id})
             chunks_deleted_count = chunks_deleted.deleted_count
-            
-            # Step 2: Delete the document itself
+
             docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
             await docs_collection.delete_one({"_id": doc_id})
-            
+
             logger.info(f"Force re-scrape: Deleted existing document {doc_id} and {chunks_deleted_count} chunks")
-        
+
         # Scrape content
         scraped_content = scraper.scrape_document_content(url)
-        
+
         if not scraped_content:
-            raise HTTPException(
-                status_code=400, 
-                detail="Could not scrape content from the provided URL"
-            )
-        
+            raise HTTPException(status_code=400, detail="Could not scrape content from the provided URL")
+
         # Create document
         document = {
             "title": title,
@@ -469,49 +453,79 @@ async def scrape_document(request: dict):
             "url": url,
             "metadata": metadata,
             "created_at": datetime.now(),
-            "updated_at": datetime.now()
+            "updated_at": datetime.now(),
         }
-        
+
         # Insert document
         doc_id = await mongodb_client.insert_document(document)
-        
-        # Create embeddings with custom parameters
+
+        # Create embeddings with article-aware chunking
         chunks = embeddings_client.chunk_text(
             scraped_content,
             chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_overlap=chunk_overlap,
+            use_article_chunking=use_article_chunking,
+            document_type=document_type,
         )
-        
+
+        # Analyze chunking results
+        article_chunks = [c for c in chunks if c.get("metadata", {}).get("chunk_type") == "articles"]
+        preamble_chunks = [c for c in chunks if c.get("metadata", {}).get("chunk_type") == "preamble"]
+        other_chunks = len(chunks) - len(article_chunks) - len(preamble_chunks)
+
+        # Get unique articles covered
+        all_articles = []
+        for chunk in article_chunks:
+            all_articles.extend(chunk.get("metadata", {}).get("article_numbers", []))
+        unique_articles = list(set(all_articles))
+
+        article_stats = {
+            "total_chunks": len(chunks),
+            "article_based_chunks": len(article_chunks),
+            "preamble_chunks": len(preamble_chunks),
+            "other_chunks": other_chunks,
+            "unique_articles_found": len(unique_articles),
+            "articles_list": unique_articles[:10],  # First 10 for preview
+            "chunking_method": "article_based" if use_article_chunking and article_chunks else "character_based",
+        }
+
+        logger.info(f"Chunking stats: {article_stats}")
+
         # Generate embeddings
         chunk_texts = [chunk["text"] for chunk in chunks]
-        embeddings = await embeddings_client.agenerate_embeddings_batch(
-            chunk_texts,
-            batch_size=5
-        )
-        
-        # Store vectors
+        embeddings = await embeddings_client.agenerate_embeddings_batch(chunk_texts, batch_size=5)
+
+        # Store vectors with enhanced metadata
         from bson import ObjectId
+
         vectors_created = 0
-        
+
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            chunk_metadata = chunk.get("metadata", {})
+
             vector_doc = {
                 "document_id": ObjectId(doc_id),
                 "text": chunk["text"],
                 "embedding": embedding,
                 "chunk_index": i,
                 "metadata": {
-                    "start_char": chunk["start_char"],
-                    "end_char": chunk["end_char"],
+                    "start_char": chunk.get("start_char", 0),
+                    "end_char": chunk.get("end_char", len(chunk["text"])),
+                    "chunk_size": len(chunk["text"]),
+                    "chunk_type": chunk_metadata.get("chunk_type", "unknown"),
+                    "article_count": chunk_metadata.get("article_count", 0),
+                    "article_numbers": chunk_metadata.get("article_numbers", []),
+                    "article_range": chunk_metadata.get("article_range", ""),
                     "document_type": document_type,
                     "document_title": title,
-                    "issuing_body": issuing_body
+                    "issuing_body": issuing_body,
                 },
-                "created_at": datetime.now()
+                "created_at": datetime.now(),
             }
-            
+
             await mongodb_client.insert_vector(vector_doc)
             vectors_created += 1
-        
+
         return {
             "status": "re_scraped" if was_existing and force_rescrape else "success",
             "document_id": doc_id,
@@ -519,9 +533,11 @@ async def scrape_document(request: dict):
             "text_length": len(scraped_content),
             "chunk_size_used": chunk_size,
             "chunk_overlap_used": chunk_overlap,
-            "chunks_deleted": chunks_deleted_count
+            "chunks_deleted": chunks_deleted_count,
+            "chunking_method": article_stats["chunking_method"],
+            "article_stats": article_stats,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -536,59 +552,49 @@ async def get_ingestion_stats():
     """
     try:
         from ..core.mongodb import mongodb_client
-        
+
         docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
         vectors_collection = mongodb_client.async_db[settings.mongodb_collection_vectors]
-        
+
         # Get document counts by type
-        pipeline = [
-            {"$group": {"_id": "$document_type", "count": {"$sum": 1}}},
-            {"$sort": {"count": -1}}
-        ]
-        
+        pipeline = [{"$group": {"_id": "$document_type", "count": {"$sum": 1}}}, {"$sort": {"count": -1}}]
+
         doc_types = []
         async for result in docs_collection.aggregate(pipeline):
-            doc_types.append({
-                "type": result["_id"],
-                "count": result["count"]
-            })
-        
+            doc_types.append({"type": result["_id"], "count": result["count"]})
+
         # Get document counts by source
-        source_pipeline = [
-            {"$group": {"_id": "$source", "count": {"$sum": 1}}},
-            {"$sort": {"count": -1}}
-        ]
-        
+        source_pipeline = [{"$group": {"_id": "$source", "count": {"$sum": 1}}}, {"$sort": {"count": -1}}]
+
         doc_sources = []
         async for result in docs_collection.aggregate(source_pipeline):
-            doc_sources.append({
-                "source": result["_id"],
-                "count": result["count"]
-            })
-        
+            doc_sources.append({"source": result["_id"], "count": result["count"]})
+
         # Get recent documents
         recent_docs = []
         async for doc in docs_collection.find().sort("created_at", -1).limit(10):
-            recent_docs.append({
-                "title": doc.get("title", ""),
-                "document_type": doc.get("document_type"),
-                "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None
-            })
-        
+            recent_docs.append(
+                {
+                    "title": doc.get("title", ""),
+                    "document_type": doc.get("document_type"),
+                    "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,
+                }
+            )
+
         # Calculate average chunks per document
         total_docs = await docs_collection.count_documents({})
         total_vectors = await vectors_collection.count_documents({})
         avg_chunks = total_vectors / total_docs if total_docs > 0 else 0
-        
+
         return {
             "total_documents": total_docs,
             "total_vectors": total_vectors,
             "average_chunks_per_document": round(avg_chunks, 2),
             "documents_by_type": doc_types,
             "documents_by_source": doc_sources,
-            "recent_documents": recent_docs
+            "recent_documents": recent_docs,
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting ingestion stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -600,61 +606,61 @@ async def get_document_statistics_by_type():
     try:
         from ..core.mongodb import mongodb_client
         from ..core.config import settings
-        
+
         docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
-        
+
         pipeline = [
             # First, get document info with chunk counts
-            {"$lookup": {
-                "from": settings.mongodb_collection_vectors,
-                "let": {"doc_id": "$_id"},
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}},
-                    {"$group": {
-                        "_id": None,
-                        "count": {"$sum": 1},
-                        "total_size": {"$sum": {"$strLenCP": "$text"}}
-                    }}
-                ],
-                "as": "chunk_stats"
-            }},
-            
+            {
+                "$lookup": {
+                    "from": settings.mongodb_collection_vectors,
+                    "let": {"doc_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}},
+                        {"$group": {"_id": None, "count": {"$sum": 1}, "total_size": {"$sum": {"$strLenCP": "$text"}}}},
+                    ],
+                    "as": "chunk_stats",
+                }
+            },
             # Extract stats
-            {"$addFields": {
-                "chunks_count": {"$ifNull": [{"$arrayElemAt": ["$chunk_stats.count", 0]}, 0]},
-                "total_text_size": {"$ifNull": [{"$arrayElemAt": ["$chunk_stats.total_size", 0]}, 0]}
-            }},
-            
+            {
+                "$addFields": {
+                    "chunks_count": {"$ifNull": [{"$arrayElemAt": ["$chunk_stats.count", 0]}, 0]},
+                    "total_text_size": {"$ifNull": [{"$arrayElemAt": ["$chunk_stats.total_size", 0]}, 0]},
+                }
+            },
             # Group by document type
-            {"$group": {
-                "_id": "$document_type",
-                "doc_count": {"$sum": 1},
-                "total_chunks": {"$sum": "$chunks_count"},
-                "total_text_size": {"$sum": "$total_text_size"},
-                "avg_chunks_per_doc": {"$avg": "$chunks_count"},
-                "avg_text_size_per_doc": {"$avg": "$total_text_size"}
-            }},
-            
+            {
+                "$group": {
+                    "_id": "$document_type",
+                    "doc_count": {"$sum": 1},
+                    "total_chunks": {"$sum": "$chunks_count"},
+                    "total_text_size": {"$sum": "$total_text_size"},
+                    "avg_chunks_per_doc": {"$avg": "$chunks_count"},
+                    "avg_text_size_per_doc": {"$avg": "$total_text_size"},
+                }
+            },
             # Sort by document count
             {"$sort": {"doc_count": -1}},
-            
             # Format the output
-            {"$project": {
-                "document_type": "$_id",
-                "document_count": "$doc_count",
-                "total_chunks": "$total_chunks",
-                "total_text_size": "$total_text_size",
-                "avg_chunks_per_doc": {"$round": ["$avg_chunks_per_doc", 1]},
-                "avg_text_size_per_doc": {"$round": ["$avg_text_size_per_doc", 0]},
-                "_id": 0
-            }}
+            {
+                "$project": {
+                    "document_type": "$_id",
+                    "document_count": "$doc_count",
+                    "total_chunks": "$total_chunks",
+                    "total_text_size": "$total_text_size",
+                    "avg_chunks_per_doc": {"$round": ["$avg_chunks_per_doc", 1]},
+                    "avg_text_size_per_doc": {"$round": ["$avg_text_size_per_doc", 0]},
+                    "_id": 0,
+                }
+            },
         ]
-        
+
         results = await docs_collection.aggregate(pipeline).to_list(length=None)
-        
+
         logger.info(f"Retrieved statistics for {len(results)} document types")
         return {"statistics_by_type": results}
-        
+
     except Exception as e:
         logger.error(f"Error getting document statistics by type: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -666,84 +672,90 @@ async def find_documents_with_chunk_anomalies():
     try:
         from ..core.mongodb import mongodb_client
         from ..core.config import settings
-        
+
         docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
-        
+
         pipeline = [
             # Get chunk statistics per document
-            {"$lookup": {
-                "from": settings.mongodb_collection_vectors,
-                "let": {"doc_id": "$_id"},
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}},
-                    {"$group": {
-                        "_id": None,
-                        "count": {"$sum": 1},
-                        "sizes": {"$push": {"$strLenCP": "$text"}},
-                        "min_size": {"$min": {"$strLenCP": "$text"}},
-                        "max_size": {"$max": {"$strLenCP": "$text"}},
-                        "avg_size": {"$avg": {"$strLenCP": "$text"}},
-                        "std_dev": {"$stdDevPop": {"$strLenCP": "$text"}}
-                    }}
-                ],
-                "as": "chunk_analysis"
-            }},
-            
+            {
+                "$lookup": {
+                    "from": settings.mongodb_collection_vectors,
+                    "let": {"doc_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}},
+                        {
+                            "$group": {
+                                "_id": None,
+                                "count": {"$sum": 1},
+                                "sizes": {"$push": {"$strLenCP": "$text"}},
+                                "min_size": {"$min": {"$strLenCP": "$text"}},
+                                "max_size": {"$max": {"$strLenCP": "$text"}},
+                                "avg_size": {"$avg": {"$strLenCP": "$text"}},
+                                "std_dev": {"$stdDevPop": {"$strLenCP": "$text"}},
+                            }
+                        },
+                    ],
+                    "as": "chunk_analysis",
+                }
+            },
             # Unwind and filter
             {"$unwind": "$chunk_analysis"},
-            
             # Find anomalies
-            {"$match": {
-                "$or": [
-                    # Very few chunks for a large document
-                    {"$and": [
-                        {"chunk_analysis.count": {"$lt": 3}},
-                        {"chunk_analysis.avg_size": {"$gt": 2000}}
-                    ]},
-                    # Very small chunks
-                    {"chunk_analysis.min_size": {"$lt": 100}},
-                    # High variance in chunk sizes
-                    {"chunk_analysis.std_dev": {"$gt": 500}},
-                    # Suspiciously uniform chunks (might indicate bad chunking)
-                    {"chunk_analysis.std_dev": {"$lt": 10}}
-                ]
-            }},
-            
-            # Project useful info
-            {"$project": {
-                "_id": 0,  # Exclude ObjectId to avoid serialization issues
-                "document_id": {"$toString": "$_id"},  # Convert ObjectId to string
-                "title": 1,
-                "document_type": 1,
-                "url": 1,
-                "chunk_count": "$chunk_analysis.count",
-                "avg_chunk_size": {"$round": ["$chunk_analysis.avg_size", 0]},
-                "min_chunk_size": "$chunk_analysis.min_size",
-                "max_chunk_size": "$chunk_analysis.max_size",
-                "size_std_dev": {"$round": ["$chunk_analysis.std_dev", 0]},
-                "anomaly_reasons": {
-                    "$cond": [
-                        {"$lt": ["$chunk_analysis.count", 3]}, 
-                        "too_few_chunks", 
-                        {"$cond": [
-                            {"$lt": ["$chunk_analysis.min_size", 100]},
-                            "very_small_chunks",
-                            {"$cond": [
-                                {"$gt": ["$chunk_analysis.std_dev", 500]},
-                                "high_size_variance",
-                                "suspiciously_uniform"
-                            ]}
-                        ]}
+            {
+                "$match": {
+                    "$or": [
+                        # Very few chunks for a large document
+                        {"$and": [{"chunk_analysis.count": {"$lt": 3}}, {"chunk_analysis.avg_size": {"$gt": 2000}}]},
+                        # Very small chunks
+                        {"chunk_analysis.min_size": {"$lt": 100}},
+                        # High variance in chunk sizes
+                        {"chunk_analysis.std_dev": {"$gt": 500}},
+                        # Suspiciously uniform chunks (might indicate bad chunking)
+                        {"chunk_analysis.std_dev": {"$lt": 10}},
                     ]
                 }
-            }}
+            },
+            # Project useful info
+            {
+                "$project": {
+                    "_id": 0,  # Exclude ObjectId to avoid serialization issues
+                    "document_id": {"$toString": "$_id"},  # Convert ObjectId to string
+                    "title": 1,
+                    "document_type": 1,
+                    "url": 1,
+                    "chunk_count": "$chunk_analysis.count",
+                    "avg_chunk_size": {"$round": ["$chunk_analysis.avg_size", 0]},
+                    "min_chunk_size": "$chunk_analysis.min_size",
+                    "max_chunk_size": "$chunk_analysis.max_size",
+                    "size_std_dev": {"$round": ["$chunk_analysis.std_dev", 0]},
+                    "anomaly_reasons": {
+                        "$cond": [
+                            {"$lt": ["$chunk_analysis.count", 3]},
+                            "too_few_chunks",
+                            {
+                                "$cond": [
+                                    {"$lt": ["$chunk_analysis.min_size", 100]},
+                                    "very_small_chunks",
+                                    {
+                                        "$cond": [
+                                            {"$gt": ["$chunk_analysis.std_dev", 500]},
+                                            "high_size_variance",
+                                            "suspiciously_uniform",
+                                        ]
+                                    },
+                                ]
+                            },
+                        ]
+                    },
+                }
+            },
         ]
-        
+
         results = await docs_collection.aggregate(pipeline).to_list(length=None)
-        
+
         logger.info(f"Found {len(results)} documents with chunk anomalies")
         return {"anomalous_documents": results}
-        
+
     except Exception as e:
         logger.error(f"Error finding chunk anomalies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -756,72 +768,82 @@ async def find_rescrape_candidates(days_old: int = 30):
         from ..core.mongodb import mongodb_client
         from ..core.config import settings
         from datetime import datetime, timedelta
-        
+
         docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
-        
+
         cutoff_date = datetime.now() - timedelta(days=days_old)
-        
+
         pipeline = [
             # Match old documents
-            {"$match": {
-                "$or": [
-                    {"updated_at": {"$lt": cutoff_date}},
-                    {"updated_at": {"$exists": False}}
-                ]
-            }},
-            
+            {"$match": {"$or": [{"updated_at": {"$lt": cutoff_date}}, {"updated_at": {"$exists": False}}]}},
             # Get chunk info
-            {"$lookup": {
-                "from": settings.mongodb_collection_vectors,
-                "let": {"doc_id": "$_id"},
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}},
-                    {"$count": "count"}
-                ],
-                "as": "chunk_info"
-            }},
-            
+            {
+                "$lookup": {
+                    "from": settings.mongodb_collection_vectors,
+                    "let": {"doc_id": "$_id"},
+                    "pipeline": [{"$match": {"$expr": {"$eq": ["$document_id", "$$doc_id"]}}}, {"$count": "count"}],
+                    "as": "chunk_info",
+                }
+            },
             # Check for issues
-            {"$match": {
-                "$or": [
-                    # No chunks at all
-                    {"chunk_info": {"$size": 0}},
-                    # Very few chunks (might indicate failed scraping)
-                    {"$expr": {"$lt": [{"$arrayElemAt": ["$chunk_info.count", 0]}, 2]}}
-                ]
-            }},
-            
-            # Project results
-            {"$project": {
-                "title": 1,
-                "url": 1,
-                "document_type": 1,
-                "last_updated": {"$ifNull": ["$updated_at", "$created_at"]},
-                "days_old": {
-                    "$divide": [
-                        {"$subtract": [datetime.now(), {"$ifNull": ["$updated_at", "$created_at"]}]},
-                        1000 * 60 * 60 * 24  # Convert to days
+            {
+                "$match": {
+                    "$or": [
+                        # No chunks at all
+                        {"chunk_info": {"$size": 0}},
+                        # Very few chunks (might indicate failed scraping)
+                        {"$expr": {"$lt": [{"$arrayElemAt": ["$chunk_info.count", 0]}, 2]}},
                     ]
-                },
-                "chunk_count": {"$ifNull": [{"$arrayElemAt": ["$chunk_info.count", 0]}, 0]},
-                "needs_rescrape": True
-            }},
-            
+                }
+            },
+            # Project results
+            {
+                "$project": {
+                    "title": 1,
+                    "url": 1,
+                    "document_type": 1,
+                    "last_updated": {"$ifNull": ["$updated_at", "$created_at"]},
+                    "days_old": {
+                        "$divide": [
+                            {"$subtract": [datetime.now(), {"$ifNull": ["$updated_at", "$created_at"]}]},
+                            1000 * 60 * 60 * 24,  # Convert to days
+                        ]
+                    },
+                    "chunk_count": {"$ifNull": [{"$arrayElemAt": ["$chunk_info.count", 0]}, 0]},
+                    "needs_rescrape": True,
+                }
+            },
             # Sort by age
-            {"$sort": {"days_old": -1}}
+            {"$sort": {"days_old": -1}},
         ]
-        
+
         results = await docs_collection.aggregate(pipeline).to_list(length=None)
-        
+
         logger.info(f"Found {len(results)} documents that may need re-scraping")
-        return {
-            "rescrape_candidates": results,
-            "criteria": {
-                "days_old_threshold": days_old,
-                "min_chunks_threshold": 2
-            }
-        }
-        
+        return {"rescrape_candidates": results, "criteria": {"days_old_threshold": days_old, "min_chunks_threshold": 2}}
+
     except Exception as e:
         logger.error(f"Error finding rescrape candidates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chunking-method-stats")
+async def get_chunking_method_stats():
+    """Get distribution of chunking methods used."""
+    try:
+        from ..core.mongodb import mongodb_client
+
+        vectors_collection = mongodb_client.async_db[settings.mongodb_collection_vectors]
+
+        pipeline = [{"$group": {"_id": "$metadata.chunk_type", "count": {"$sum": 1}}}, {"$sort": {"count": -1}}]
+
+        chunking_stats = {}
+        async for result in vectors_collection.aggregate(pipeline):
+            chunk_type = result["_id"] or "unknown"
+            chunking_stats[chunk_type] = result["count"]
+
+        return {"chunking_stats": chunking_stats}
+
+    except Exception as e:
+        logger.error(f"Error getting chunking stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))

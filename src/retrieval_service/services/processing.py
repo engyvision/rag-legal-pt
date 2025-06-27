@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 import io
 import PyPDF2
@@ -23,9 +23,7 @@ class ProcessingService:
         self.storage_client = storage.Client()
         self.bucket = self.storage_client.bucket(settings.gcs_bucket_name)
 
-    async def process_upload(
-        self, file, document_type: str = "legal_document"
-    ) -> Dict[str, Any]:
+    async def process_upload(self, file, document_type: str = "legal_document") -> Dict[str, Any]:
         """Process an uploaded file."""
         start_time = time.time()
 
@@ -87,9 +85,7 @@ class ProcessingService:
             logger.error(f"Error processing upload: {e}")
             raise
 
-    async def process_document(
-        self, gcs_path: str, metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
+    async def process_document(self, gcs_path: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Process a document from Cloud Storage."""
         try:
             # Parse GCS path
@@ -149,39 +145,60 @@ class ProcessingService:
         text: str,
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
+        document_type: Optional[str] = None,
     ) -> int:
-        """Create embeddings for document chunks."""
+        """Create embeddings for document chunks using article-aware chunking."""
         try:
-            # Chunk the text
+            # Get document type if not provided
+            if not document_type:
+                doc = await mongodb_client.get_document_by_id(document_id)
+                document_type = doc.get("document_type") if doc else None
+
+            # Chunk the text with article awareness
             chunks = embeddings_client.chunk_text(
-                text, chunk_size=chunk_size, chunk_overlap=chunk_overlap
+                text,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                use_article_chunking=True,
+                document_type=document_type,
             )
 
             if not chunks:
                 logger.warning(f"No chunks created for document {document_id}")
                 return 0
 
+            # Log chunking statistics
+            article_chunks = sum(1 for c in chunks if c.get("metadata", {}).get("chunk_type") == "articles")
+            other_chunks = len(chunks) - article_chunks
+            logger.info(f"Document chunking: {article_chunks} article-based chunks, {other_chunks} other chunks")
+
             # Generate embeddings in batches
             chunk_texts = [chunk["text"] for chunk in chunks]
-            embeddings = await embeddings_client.agenerate_embeddings_batch(
-                chunk_texts, batch_size=5
-            )
+            embeddings = await embeddings_client.agenerate_embeddings_batch(chunk_texts, batch_size=5)
 
-            # Store vectors
+            # Store vectors with enhanced metadata
             from bson import ObjectId
 
             vectors_created = 0
 
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                # Enhance metadata with article information
+                chunk_metadata = chunk.get("metadata", {})
+
                 vector_doc = {
                     "document_id": ObjectId(document_id),
                     "text": chunk["text"],
                     "embedding": embedding,
                     "chunk_index": i,
                     "metadata": {
-                        "start_char": chunk["start_char"],
-                        "end_char": chunk["end_char"],
+                        "start_char": chunk.get("start_char", 0),
+                        "end_char": chunk.get("end_char", len(chunk["text"])),
                         "chunk_size": len(chunk["text"]),
+                        "chunk_type": chunk_metadata.get("chunk_type", "unknown"),
+                        "article_count": chunk_metadata.get("article_count", 0),
+                        "article_numbers": chunk_metadata.get("article_numbers", []),
+                        "article_range": chunk_metadata.get("article_range", ""),
+                        "document_type": document_type,
                     },
                     "created_at": datetime.now(),
                 }
@@ -235,29 +252,19 @@ class ProcessingService:
                 raise ValueError(f"Document {document_id} not found")
 
             # Delete existing vectors
-            vectors_collection = mongodb_client.async_db[
-                settings.mongodb_collection_vectors
-            ]
+            vectors_collection = mongodb_client.async_db[settings.mongodb_collection_vectors]
             from bson import ObjectId
 
-            delete_result = await vectors_collection.delete_many(
-                {"document_id": ObjectId(document_id)}
-            )
+            delete_result = await vectors_collection.delete_many({"document_id": ObjectId(document_id)})
 
             logger.info(f"Deleted {delete_result.deleted_count} existing vectors")
 
             # Recreate embeddings
-            chunks_created = await self._create_embeddings(
-                document_id, document.get("text", "")
-            )
+            chunks_created = await self._create_embeddings(document_id, document.get("text", ""))
 
             # Update document timestamp
-            docs_collection = mongodb_client.async_db[
-                settings.mongodb_collection_documents
-            ]
-            await docs_collection.update_one(
-                {"_id": ObjectId(document_id)}, {"$set": {"updated_at": datetime.now()}}
-            )
+            docs_collection = mongodb_client.async_db[settings.mongodb_collection_documents]
+            await docs_collection.update_one({"_id": ObjectId(document_id)}, {"$set": {"updated_at": datetime.now()}})
 
             return {
                 "document_id": document_id,
